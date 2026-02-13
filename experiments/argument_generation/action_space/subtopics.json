@@ -1,0 +1,46 @@
+{
+	"name": "Causal Subtopics",
+	"definition": "Forces the next reasoning step to analyze the issue through a specific argumentative lens or topical framework, controlling which perspective or moral framework is applied. Interventions along this dimension ensure the next step examines the issue from a particular angle (e.g., economic impact, human rights, justice and fairness, or risk assessment).",
+	"choices": {
+		"cost_benefit_and_impact_analysis": {
+			"definition": "Weighs economic, social, and practical consequences systematically",
+			"internal_reasoning": "I should quantify and compare costs, benefits, and real-world impacts across economic, social, and environmental dimensions. "
+		},
+		"rights_and_liberties": {
+			"definition": "Protects fundamental rights, freedoms, privacy, and individual autonomy",
+			"internal_reasoning": "I should consider inalienable human rights, civil liberties, privacy protections, and the freedom to make one's own choices. "
+		},
+		"justice_and_fairness": {
+			"definition": "Ensures equitable treatment, fair distribution, and equal opportunity",
+			"internal_reasoning": "I should analyze whether outcomes, processes, and distributions are fair to all parties involved. "
+		},
+		"ethical_principles": {
+			"definition": "Applies moral frameworks including duties, virtues, and care for others",
+			"internal_reasoning": "I should evaluate actions based on moral rules, character virtues, relationships, and ethical obligations. "
+		},
+		"governance_and_accountability": {
+			"definition": "Examines rule of law, transparency, democratic legitimacy, and institutional responsibility",
+			"internal_reasoning": "I should consider legal frameworks, accountability mechanisms, democratic principles, and proper authority. "
+		},
+		"risk_and_unintended_consequences": {
+			"definition": "Anticipates potential harms, unforeseen effects, and slippery slopes",
+			"internal_reasoning": "I should identify risks, unintended outcomes, cascading effects, and potential for escalation. "
+		},
+		"feasibility_and_implementation": {
+			"definition": "Assesses practical workability, technical constraints, and enforcement challenges",
+			"internal_reasoning": "I should evaluate whether the proposal can actually be implemented and enforced effectively. "
+		},
+		"incentives_and_power_dynamics": {
+			"definition": "Analyzes how rewards, penalties, and power structures shape behavior",
+			"internal_reasoning": "I should examine what behaviors are encouraged, who holds power, and how interests align or conflict. "
+		},
+		"precedent_and_long_term_effects": {
+			"definition": "Considers established patterns and future implications across generations",
+			"internal_reasoning": "I should evaluate historical precedents, long-term vs short-term tradeoffs, and obligations to future generations. "
+		},
+		"stakeholder_responsibility": {
+			"definition": "Clarifies duties of government, individuals, and institutions",
+			"internal_reasoning": "I should analyze who bears responsibility—whether government, individuals, corporations, or other institutions. "
+		}
+	}
+}

@@ -1,0 +1,46 @@
+{
+	"name": "Causal Structures",
+	"definition": "Forces the next reasoning step to adhere to a specific discourse structure, controlling how ideas connect and relate to each other. Interventions along this dimension ensure the next step follows a particular organizational pattern (e.g., presenting a counterpoint, providing evidence, drawing a causal inference, or offering an example).",
+	"choices": {
+		"causal_reasoning": {
+			"definition": "States causes, effects, consequences, or logical implications.",
+			"prefix": "Therefore"
+		},
+		"conditional": {
+			"definition": "Introduces conditional, hypothetical, or counterfactual scenarios.",
+			"prefix": "If"
+		},
+		"concession_and_contrast": {
+			"definition": "Acknowledges counterpoints or highlights opposing perspectives.",
+			"prefix": "However"
+		},
+		"addition_and_elaboration": {
+			"definition": "Adds supporting information, elaborates, or strengthens a point.",
+			"prefix": "Moreover"
+		},
+		"evidence_and_authority": {
+			"definition": "Cites evidence, data, or authoritative sources.",
+			"prefix": "Evidence shows that"
+		},
+		"exemplification": {
+			"definition": "Provides concrete examples, illustrations, or case studies.",
+			"prefix": "For example"
+		},
+		"clarification_and_specification": {
+			"definition": "Restates, clarifies, defines, or narrows down to specifics.",
+			"prefix": "In other words"
+		},
+		"emphasis_and_evaluation": {
+			"definition": "Stresses importance, highlights salience, or offers evaluative judgment.",
+			"prefix": "Importantly"
+		},
+		"sequence_and_transition": {
+			"definition": "Signals progression through steps or shifts to a new topic.",
+			"prefix": "Next"
+		},
+		"conclusion_and_summary": {
+			"definition": "Summarizes, concludes, or states the practical takeaway.",
+			"prefix": "In conclusion"
+		}
+	}
+}

@@ -1,0 +1,38 @@
+# Virtual environment
+.venv/
+venv/
+*_env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+dist/
+build/
+
+# Testing / Linting
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.ruff_cache/
+.mypy_cache/
+.pytype/
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Utility scripts (project-specific paths / credentials)
+download_model.py
+experiments/download_dataset.py
+
+# Additional (private) directories
+paper/

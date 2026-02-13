@@ -1,0 +1,135 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "state-of-thoughts"
+version = "0.1.0"
+description = "Tree of Thoughts with structured action templates (built on DSPy and vLLM)"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+	"dspy",
+	"torch",
+	"accelerate>=0.26.0",
+	"transformers",
+	"pytest",
+	"pydantic",
+	"numpy",
+	"tqdm",
+	"huggingface-hub",
+	"ruff",
+	"mypy",
+	"absl-py",
+	"matplotlib",
+    "vllm",
+]
+# vllm is installed via `make sync` or `pip install vllm` (works best on Linux+CUDA)
+
+
+[tool.setuptools]
+py-modules = ["constants", "misc_utils", "utilities_for_tests"]
+
+[tool.setuptools.packages.find]
+include = ["adapter*", "experiments*", "lm*", "predict*", "signatures*", "tree*"]
+exclude = ["figures*", "paper*"]
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+pythonpath = ["."]
+addopts = "-v"
+filterwarnings = ["ignore::DeprecationWarning", "ignore::UserWarning"]
+
+[tool.ruff]
+line-length = 88
+indent-width = 4
+
+# Enforce Python 3.12
+target-version = "py312"
+
+# Exclude a variety of commonly ignored directories.
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+	"*_env",
+    "__pycache__",
+]
+
+[tool.ruff.format]
+# Like Black, use double quotes for strings.
+quote-style = "double"
+
+# Use tabs for indentation
+indent-style = "tab"
+
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+
+# Like Black, automatically detect the appropriate line ending.
+line-ending = "auto"
+
+[tool.ruff.lint]
+# Enable pycodestyle (`E`) and Pyflakes (`F`) codes by default.
+# Also enable isort (`I`), pydocstyle (`D`), and other useful rules
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "N",   # pep8-naming
+    "S",   # flake8-bandit (security)
+    "T20", # flake8-print
+]
+
+# Ignore specific rules that might be too strict for your codebase
+ignore = [
+    "E501",  # line too long (handled by formatter, Google style = 80 chars)
+    "D100",  # missing docstring in public module
+    "D101",  # missing docstring in public class
+    "D102",  # missing docstring in public method
+    "D103",  # missing docstring in public function
+    "D104",  # missing docstring in public package
+    "D105",  # missing docstring in magic method
+    "S101",  # use of assert (common in tests)
+    "S311",  # pseudo-random generators (we use for non-cryptographic purposes)
+    "W191",  # indentation contains tabs (we use tabs intentionally)
+    "E101",  # mixed spaces and tabs (formatting handles this)
+    "UP007", # use X | Y for type annotations (maintaining Python < 3.12 compatibility)
+]
+
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.lint.mccabe]
+# Flag errors (`C901`) whenever the complexity level exceeds 10.
+max-complexity = 10
+
+[tool.ruff.lint.per-file-ignores]
+# Allow print statements and assert statements in test files
+"test_*.py" = ["S101"]
+"**/test_*.py" = ["S101"]
+# Allow print statements in demo/execution files
+"run_multi_step_generation.py" = ["T201"]

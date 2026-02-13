@@ -1,0 +1,26 @@
+{
+  "name": "Target Audience",
+  "definition": "Forces the next reasoning step to adapt language, tone, and examples for a specific age demographic, controlling how information is presented and framed. Interventions along this dimension ensure the next step uses vocabulary, cultural references, and communication styles appropriate for a particular audience (e.g., simple and playful for children, relatable and current for teenagers, or professional and grounded for middle-aged adults).",
+  "choices": {
+    "children": {
+      "definition": "Writes for children ages 5-12 using simple language, examples, and enthusiasm",
+      "internal_reasoning": "I should write specifically for children (ages 5-12). I should use very simple words, short sentences, and a cheerful, playful tone with fun, concrete examples. "
+    },
+    "teenagers": {
+      "definition": "Writes for teenagers ages 13-19 using relatable language, current trends, and engaging tone",
+      "internal_reasoning": "I should write specifically for teenagers (ages 13-19). I should use casual, relatable language, an energetic tone, and examples that feel current and socially relevant. "
+    },
+    "young_adults": {
+      "definition": "Writes for young adults ages 20-35 using modern, direct language with practical examples",
+      "internal_reasoning": "I should write specifically for young adults (ages 20-35). I should use clear, modern language with practical examples and a confident, approachable tone. "
+    },
+    "middle_aged": {
+      "definition": "Writes for adults ages 36-55 using professional, balanced tone with real-world applications",
+      "internal_reasoning": "I should write specifically for middle-aged adults (ages 36-55). I should use a professional, balanced tone with grounded real-world examples and pragmatic framing. "
+    },
+    "seniors": {
+      "definition": "Writes for seniors (ages 56+) using clear, respectful and reminiscent language",
+      "internal_reasoning": "I should write specifically for seniors (ages 56+). I should use clear, respectful language with a warm tone, gentle pacing, and thoughtfully explained examples. "
+    }
+  }
+}

@@ -1,0 +1,41 @@
+dspy
+vllm
+torch
+bitsandbytes
+accelerate>=0.26.0
+unsloth
+transformers
+datasets
+pytest
+psutil
+ruff
+mypy
+httpx-aiohttp
+openai
+seaborn
+matplotlib
+tqdm
+pydantic
+numpy
+pandas
+# NoveltyBench requirements
+aiofiles
+sacrebleu
+tabulate
+colorama
+evaluate
+scikit-learn
+rouge-score
+bert_score
+tiktoken
+altair
+# NoveltyBench repo requirements
+protobuf
+cohere
+google-genai
+anthropic[vertex]
+# IFEval requirements
+langdetect
+nltk
+immutabledict
+python-dotenv
