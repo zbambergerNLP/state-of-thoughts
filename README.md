@@ -687,12 +687,29 @@ outputs = adapter(
 
 ---
 
+## **Local Development: Syncing to a GPU Server**
+
+Develop locally and run unit tests on your machine. 
+For integration tests and experiments (which require GPUs), sync the project to a GPU server and run them there:
+
+```bash
+REMOTE_HOST=user@host.example.edu REMOTE_PATH=/home/user/state_of_thoughts/ ./scripts/sync_to_remote.sh
+```
+
+With password authentication (requires `sshpass`):
+
+```bash
+REMOTE_HOST=user@host.example.edu REMOTE_PATH=/home/user/state_of_thoughts/ REMOTE_PASSWORD=secret ./scripts/sync_to_remote.sh
+```
+
+Run this script from the project root.
+After syncing, SSH into the server, (create and) activate your virtual environment, and run `pytest .` to execute integration tests against real models (see **Testing** below).
 
 ---
 
 ## **Testing**
 
-The test suite includes both **mock-based unit tests** (fast, no GPU required) and **integration tests** (require GPU access).
+The test suite includes both **mock-based unit tests** (fast, no GPU required) and **integration tests** (require GPU access). Run unit tests locally; run integration tests on a GPU server after syncing (see **Local Development** above).
 
 ### **Mock-Based Unit Tests**
 
@@ -730,4 +747,4 @@ pytest .
 
 ### **Integration Tests**
 
-Integration tests require access to GPUs and run against real models. GPU availability is detected automatically at test time: tests that need a GPU check for CUDA availability and are skipped via `pytest.mark.skipif` when no GPU is present. Simply run the same `pytest` commands as above on a system with GPUs, and the integration tests will execute instead of being skipped.
+Integration tests require access to GPUs and run against real models. They are skipped automatically on systems without GPUs. To run them, sync the project to a GPU server (see **Local Development** above), SSH in, activate your environment, then run the same `pytest` commands. The same tests that run as unit tests locally will run as integration tests on the server when CUDA is available.
