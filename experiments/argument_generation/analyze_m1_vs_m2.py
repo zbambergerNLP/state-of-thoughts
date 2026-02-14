@@ -5,7 +5,7 @@ Compares M1 (presence-based, topic model baseline) vs M2 (full LASSO with sequen
 across 3 synthesis types (strict, faithful, restructured) with ~5000 arguments each (15,000 total).
 
 Expected Data Structure:
-    experiments/argument_generation/explainability/
+    experiments/argument_generation/argument_data/
     ├── synthesis_strict/
     │   └── pairwise_comparisons_bt_scores.csv  (5000 rows)
     ├── synthesis_faithful/
@@ -20,13 +20,15 @@ Key Insight:
   that topic models miss.
 
 Usage:
-    python experiments/argument_generation/explainability/m1_vs_m2_analysis.py
+    python experiments/argument_generation/analyze_m1_vs_m2.py
 
 Output:
-    All figures are saved to the explainability/ directory.
+    All figures are saved to experiments/argument_generation/figures/.
 """
 
+import itertools
 import json
+import logging
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -35,6 +37,9 @@ import pandas as pd
 from sklearn.linear_model import Lasso, LinearRegression
 from sklearn.metrics import r2_score
 from sklearn.model_selection import KFold, cross_val_score, train_test_split
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
 # =============================================================================
 # Section 1: Setup & Constants
@@ -56,10 +61,12 @@ BOOTSTRAP_CI = 0.95  # 95% confidence interval
 USE_BOOTSTRAP_COEF_CI = False  # Set to True to show bootstrap CIs on coefficient plots
 
 # Length control flag: when True, includes argument_length in all models and adds M0 baseline
-INCLUDE_LENGTH_CONTROL = True  # Set to True to include argument_length and M0 baseline
+INCLUDE_LENGTH_CONTROL = False  # Set to True to include argument_length and M0 baseline
 
 # Suffix for figure filenames based on response variable
 FIGURE_SUFFIX = "_rank" if RESPONSE_VARIABLE == "rank_score" else ""
+if INCLUDE_LENGTH_CONTROL:
+	FIGURE_SUFFIX += "_arg_length"
 
 # Set display and plot options
 pd.set_option("display.max_colwidth", 100)
@@ -75,32 +82,34 @@ plt.rcParams["text.color"] = "#333333"
 
 # Load vocabularies (use paths relative to this script's location)
 SCRIPT_DIR = Path(__file__).parent.resolve()
-action_space_dir = SCRIPT_DIR / ".." / "action_space"
+action_space_dir = SCRIPT_DIR / "action_space"
 
-with open(action_space_dir / "causal_structures.json") as f:
+with open(action_space_dir / "structures.json") as f:
 	STRUCTURES = list(json.load(f)["choices"].keys())
 
-with open(action_space_dir / "causal_subtopics.json") as f:
+with open(action_space_dir / "subtopics.json") as f:
 	SUBTOPICS = list(json.load(f)["choices"].keys())
 
-print(f"Structures ({len(STRUCTURES)}): {STRUCTURES}")
-print(f"Subtopics ({len(SUBTOPICS)}): {SUBTOPICS}")
+logger.info(f"Structures ({len(STRUCTURES)}): {STRUCTURES}")
+logger.info(f"Subtopics ({len(SUBTOPICS)}): {SUBTOPICS}")
 
 # Dataset configuration (ordered by flexibility: least to most)
-# File paths are relative to SCRIPT_DIR (explainability/ directory)
+# File paths are relative to SCRIPT_DIR (argument_generation/ directory)
+ARGUMENT_DATA_DIR = SCRIPT_DIR / "argument_data"
+FIGURES_DIR = SCRIPT_DIR / "figures"
 DATASETS = {
 	"strict": {
-		"file": SCRIPT_DIR / "synthesis_strict" / "pairwise_comparisons_bt_scores.csv",
+		"file": ARGUMENT_DATA_DIR / "synthesis_strict" / "pairwise_comparisons_bt_scores.csv",
 		"color": "#e74c3c",  # Red
 		"label": "Strict",
 	},
 	"faithful": {
-		"file": SCRIPT_DIR / "synthesis_faithful" / "pairwise_comparisons_bt_scores.csv",
+		"file": ARGUMENT_DATA_DIR / "synthesis_faithful" / "pairwise_comparisons_bt_scores.csv",
 		"color": "#2ecc71",  # Green
 		"label": "Faithful",
 	},
 	"restructured": {
-		"file": SCRIPT_DIR / "synthesis_restructured" / "pairwise_comparisons_bt_scores.csv",
+		"file": ARGUMENT_DATA_DIR / "synthesis_restructured" / "pairwise_comparisons_bt_scores.csv",
 		"color": "#3498db",  # Blue
 		"label": "Restructured",
 	},
@@ -597,9 +606,9 @@ def bootstrap_coefficients(X, y, alpha, n_bootstrap=N_BOOTSTRAP, ci=BOOTSTRAP_CI
 
 def analyze_dataset(name, config):
 	"""Analyze a single dataset and return results."""
-	print(f"\n{'=' * 60}")
-	print(f"Processing: {config['label']} ({config['file']})")
-	print(f"{'=' * 60}")
+	logger.info(f"\n{'=' * 60}")
+	logger.info(f"Processing: {config['label']} ({config['file']})")
+	logger.info(f"{'=' * 60}")
 
 	# Load and prepare data
 	df = pd.read_csv(config["file"])
@@ -607,7 +616,7 @@ def analyze_dataset(name, config):
 	df = df.drop_duplicates(subset=["final_argument"])
 	n_after_dedup = len(df)
 	df = prepare_data(df)
-	print(f"Loaded {n_original} samples, {n_after_dedup} after removing duplicates")
+	logger.info(f"Loaded {n_original} samples, {n_after_dedup} after removing duplicates")
 
 	# Train/test split
 	train_df, test_df = train_test_split(
@@ -615,9 +624,9 @@ def analyze_dataset(name, config):
 	)
 	y_train = train_df[RESPONSE_VARIABLE]
 	y_test = test_df[RESPONSE_VARIABLE]
-	print(f"Train: {len(train_df)}, Test: {len(test_df)}")
-	print(f"Response variable: {RESPONSE_VARIABLE}")
-	print(f"Length control: {'enabled' if INCLUDE_LENGTH_CONTROL else 'disabled'}")
+	logger.info(f"Train: {len(train_df)}, Test: {len(test_df)}")
+	logger.info(f"Response variable: {RESPONSE_VARIABLE}")
+	logger.info(f"Length control: {'enabled' if INCLUDE_LENGTH_CONTROL else 'disabled'}")
 
 	# Create feature sets
 	X_m1a_train = create_m1a_features(train_df)
@@ -643,16 +652,16 @@ def analyze_dataset(name, config):
 	if INCLUDE_LENGTH_CONTROL:
 		X_m0_train = create_m0_features(train_df)
 
-	print(f"\nFeature counts:")
+	logger.info(f"\nFeature counts:")
 	if INCLUDE_LENGTH_CONTROL:
-		print(f"  M0 (Length Only):         {X_m0_train.shape[1]}")
-	print(f"  M1a (Structure Presence): {X_m1a_train.shape[1]}")
-	print(f"  M1b (Content Presence):   {X_m1b_train.shape[1]}")
-	print(f"  M1c (Both Presence):      {X_m1c_train.shape[1]}")
-	print(f"  M2 (Full Sequential):     {X_m2_train.shape[1]}")
+		logger.info(f"  M0 (Length Only):         {X_m0_train.shape[1]}")
+	logger.info(f"  M1a (Structure Presence): {X_m1a_train.shape[1]}")
+	logger.info(f"  M1b (Content Presence):   {X_m1b_train.shape[1]}")
+	logger.info(f"  M1c (Both Presence):      {X_m1c_train.shape[1]}")
+	logger.info(f"  M2 (Full Sequential):     {X_m2_train.shape[1]}")
 
 	# Run cross-validation
-	print("\nRunning 10-fold cross-validation...")
+	logger.info("\nRunning 10-fold cross-validation...")
 
 	# M0 model (OLS, length only) - only when INCLUDE_LENGTH_CONTROL is True
 	if INCLUDE_LENGTH_CONTROL:
@@ -666,15 +675,15 @@ def analyze_dataset(name, config):
 	# M2 model (LASSO with alpha selection)
 	cv_m2 = run_cv_lasso(X_m2_train, y_train)
 
-	print(f"\nCV Results:")
+	logger.info(f"\nCV Results:")
 	if INCLUDE_LENGTH_CONTROL:
-		print(f"  M0 (Length Only):         R² = {cv_m0['mean']:.4f} ± {cv_m0['std']:.4f}")
-	print(
+		logger.info(f"  M0 (Length Only):         R² = {cv_m0['mean']:.4f} ± {cv_m0['std']:.4f}")
+	logger.info(
 		f"  M1a (Structure Presence): R² = {cv_m1a['mean']:.4f} ± {cv_m1a['std']:.4f}"
 	)
-	print(f"  M1b (Content Presence):   R² = {cv_m1b['mean']:.4f} ± {cv_m1b['std']:.4f}")
-	print(f"  M1c (Both Presence):      R² = {cv_m1c['mean']:.4f} ± {cv_m1c['std']:.4f}")
-	print(
+	logger.info(f"  M1b (Content Presence):   R² = {cv_m1b['mean']:.4f} ± {cv_m1b['std']:.4f}")
+	logger.info(f"  M1c (Both Presence):      R² = {cv_m1c['mean']:.4f} ± {cv_m1c['std']:.4f}")
+	logger.info(
 		f"  M2 (Full LASSO):          R² = {cv_m2['mean']:.4f} ± {cv_m2['std']:.4f} (α={cv_m2['best_alpha']}, n={cv_m2['n_selected']})"
 	)
 
@@ -712,19 +721,19 @@ def analyze_dataset(name, config):
 	test_m1c = bootstrap_r2(y_test, model_m1c.predict(X_m1c_test))
 	test_m2 = bootstrap_r2(y_test, model_m2.predict(X_m2_test))
 
-	print(f"\nTest Set Results (with 95% CI):")
+	logger.info(f"\nTest Set Results (with 95% CI):")
 	if INCLUDE_LENGTH_CONTROL:
-		print(f"  M0 (Length Only):         R² = {test_m0['point']:.4f} [{test_m0['ci_lower']:.4f}, {test_m0['ci_upper']:.4f}]")
-	print(f"  M1a (Structure Presence): R² = {test_m1a['point']:.4f} [{test_m1a['ci_lower']:.4f}, {test_m1a['ci_upper']:.4f}]")
-	print(f"  M1b (Content Presence):   R² = {test_m1b['point']:.4f} [{test_m1b['ci_lower']:.4f}, {test_m1b['ci_upper']:.4f}]")
-	print(f"  M1c (Both Presence):      R² = {test_m1c['point']:.4f} [{test_m1c['ci_lower']:.4f}, {test_m1c['ci_upper']:.4f}]")
-	print(f"  M2 (Full LASSO):          R² = {test_m2['point']:.4f} [{test_m2['ci_lower']:.4f}, {test_m2['ci_upper']:.4f}]")
-	print(f"  Improvement (M2 - M1c):   {test_m2['point'] - test_m1c['point']:+.4f}")
+		logger.info(f"  M0 (Length Only):         R² = {test_m0['point']:.4f} [{test_m0['ci_lower']:.4f}, {test_m0['ci_upper']:.4f}]")
+	logger.info(f"  M1a (Structure Presence): R² = {test_m1a['point']:.4f} [{test_m1a['ci_lower']:.4f}, {test_m1a['ci_upper']:.4f}]")
+	logger.info(f"  M1b (Content Presence):   R² = {test_m1b['point']:.4f} [{test_m1b['ci_lower']:.4f}, {test_m1b['ci_upper']:.4f}]")
+	logger.info(f"  M1c (Both Presence):      R² = {test_m1c['point']:.4f} [{test_m1c['ci_lower']:.4f}, {test_m1c['ci_upper']:.4f}]")
+	logger.info(f"  M2 (Full LASSO):          R² = {test_m2['point']:.4f} [{test_m2['ci_lower']:.4f}, {test_m2['ci_upper']:.4f}]")
+	logger.info(f"  Improvement (M2 - M1c):   {test_m2['point'] - test_m1c['point']:+.4f}")
 
 	# Bootstrap CIs for coefficients (optional, controlled by USE_BOOTSTRAP_COEF_CI)
 	coef_bootstrap = None
 	if USE_BOOTSTRAP_COEF_CI:
-		print("  Computing bootstrap CIs for coefficients...")
+		logger.info("  Computing bootstrap CIs for coefficients...")
 		coef_bootstrap = bootstrap_coefficients(
 			X_m2_train, y_train, cv_m2["best_alpha"]
 		)
@@ -743,9 +752,9 @@ def analyze_dataset(name, config):
 			feature_categories[cat] = []
 		feature_categories[cat].append(feat)
 
-	print(f"\nM2 Selected Features by Category:")
+	logger.info(f"\nM2 Selected Features by Category:")
 	for cat, feats in sorted(feature_categories.items()):
-		print(f"  {cat}: {len(feats)}")
+		logger.info(f"  {cat}: {len(feats)}")
 
 	# Build result dict
 	n_features = {
@@ -788,6 +797,9 @@ def analyze_dataset(name, config):
 		"feature_categories": feature_categories,
 		"alpha_results": cv_m2["all_results"],
 		"coef_bootstrap": coef_bootstrap,
+		"df": df,
+		"model_m2": model_m2,
+		"m2_columns": X_m2_train.columns,
 	}
 
 
@@ -879,230 +891,15 @@ def plot_length_histograms():
 
 	plt.suptitle("Argument Length Distributions by Synthesis Type", fontweight="bold", y=1.02)
 	plt.tight_layout()
-	filename = f"argument_length_histograms{FIGURE_SUFFIX}.png"
-	plt.savefig(SCRIPT_DIR / filename, dpi=300, bbox_inches="tight")
+	filename = f"argument_length_histograms{FIGURE_SUFFIX}.pdf"
+	plt.savefig(FIGURES_DIR / filename, dpi=300, bbox_inches="tight")
 	plt.close()
-	print(f"Saved: {filename}")
+	logger.info(f"Saved: {filename}")
 
 
-def plot_cv_comparison(all_results):
-	"""Figure 1: CV Performance Comparison."""
-	from matplotlib.patches import Patch
-
-	fig, ax = plt.subplots(figsize=(12, 6))
-
-	models = ["M0", "M1a", "M1b", "M1c", "M2"] if INCLUDE_LENGTH_CONTROL else ["M1a", "M1b", "M1c", "M2"]
-	x = np.arange(len(DATASETS))
-	width = 0.15 if INCLUDE_LENGTH_CONTROL else 0.2
-	datasets_list = list(DATASETS.keys())
-
-	for i, model in enumerate(models):
-		means = [all_results[ds]["cv"][model]["mean"] for ds in DATASETS]
-		stds = [all_results[ds]["cv"][model]["std"] for ds in DATASETS]
-
-		# Use dataset-specific colors for each model
-		colors = [DATASET_PALETTES[ds][model] for ds in datasets_list]
-		ax.bar(
-			x + i * width, means, width, yerr=stds, capsize=3,
-			color=colors, edgecolor="white", linewidth=0.5
-		)
-
-	ax.set_xlabel("Dataset")
-	ax.set_ylabel("CV R²")
-	ax.set_title(
-		"Topic Model Baseline (M1) vs Sequential Model (M2)\n10-fold Cross-Validation \n(Intervals of observed range)",
-		fontweight="bold",
-	)
-	ax.set_xticks(x + (len(models) - 1) * width / 2)
-	ax.set_xticklabels([DATASETS[ds]["label"] for ds in DATASETS])
-
-	# Create custom legend showing models (using gray shades for model legend)
-	if INCLUDE_LENGTH_CONTROL:
-		model_legend = [
-			Patch(facecolor="#999999", edgecolor="black", label="M0 (Length Only)"),
-			Patch(facecolor="#777777", edgecolor="black", label="M1a (Structure)"),
-			Patch(facecolor="#555555", edgecolor="black", label="M1b (Content)"),
-			Patch(facecolor="#333333", edgecolor="black", label="M1c (Both)"),
-			Patch(facecolor="#111111", edgecolor="black", label="M2 (Sequential)"),
-		]
-	else:
-		model_legend = [
-			Patch(facecolor="#777777", edgecolor="black", label="M1a (Structure)"),
-			Patch(facecolor="#555555", edgecolor="black", label="M1b (Content)"),
-			Patch(facecolor="#333333", edgecolor="black", label="M1c (Both)"),
-			Patch(facecolor="#111111", edgecolor="black", label="M2 (Sequential)"),
-		]
-	ax.legend(
-		handles=model_legend,
-		title="Model (light→dark)",
-		loc="center left",
-		bbox_to_anchor=(1.0, 0.5),
-		fontsize=10,
-		frameon=False,
-	)
-	apply_clean_style(ax)
-
-	plt.tight_layout(rect=[0, 0, 0.82, 0.95])
-	filename = f"m1_vs_m2_cv_comparison{FIGURE_SUFFIX}.png"
-	plt.savefig(SCRIPT_DIR / filename, dpi=300, bbox_inches="tight")
-	plt.close()
-	print(f"Saved: {filename}")
-
-
-def plot_test_comparison(all_results):
-	"""Figure 2: Test Set Performance with 95% CI error bars."""
-	fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-	datasets_list = list(DATASETS.keys())
-
-	# Left panel: M1c vs M2 test R² with error bars
-	ax = axes[0]
-	x = np.arange(len(DATASETS))
-	width = 0.35
-
-	# Extract point estimates and CI bounds
-	m1c_scores = [all_results[ds]["test"]["M1c"]["point"] for ds in DATASETS]
-	m2_scores = [all_results[ds]["test"]["M2"]["point"] for ds in DATASETS]
-
-	# Calculate asymmetric error bars (lower_err, upper_err)
-	m1c_lower_err = [all_results[ds]["test"]["M1c"]["point"] - all_results[ds]["test"]["M1c"]["ci_lower"] for ds in DATASETS]
-	m1c_upper_err = [all_results[ds]["test"]["M1c"]["ci_upper"] - all_results[ds]["test"]["M1c"]["point"] for ds in DATASETS]
-	m2_lower_err = [all_results[ds]["test"]["M2"]["point"] - all_results[ds]["test"]["M2"]["ci_lower"] for ds in DATASETS]
-	m2_upper_err = [all_results[ds]["test"]["M2"]["ci_upper"] - all_results[ds]["test"]["M2"]["point"] for ds in DATASETS]
-
-	# Use dataset-specific colors for M1c and M2
-	m1c_colors = [DATASET_PALETTES[ds]["M1c"] for ds in datasets_list]
-	m2_colors = [DATASET_PALETTES[ds]["M2"] for ds in datasets_list]
-
-	# Plot bars with error bars
-	for i, ds in enumerate(datasets_list):
-		ax.bar(x[i] - width / 2, m1c_scores[i], width, color=m1c_colors[i], edgecolor="white", linewidth=0.5,
-			   yerr=[[m1c_lower_err[i]], [m1c_upper_err[i]]], capsize=3, error_kw={"ecolor": "black", "elinewidth": 1})
-		ax.bar(x[i] + width / 2, m2_scores[i], width, color=m2_colors[i], edgecolor="white", linewidth=0.5,
-			   yerr=[[m2_lower_err[i]], [m2_upper_err[i]]], capsize=3, error_kw={"ecolor": "black", "elinewidth": 1})
-
-	ax.set_xlabel("Dataset")
-	ax.set_ylabel("Test R²")
-	ax.set_title("Test Set Performance: M1c vs M2\n(95% CI)", fontweight="bold")
-	ax.set_xticks(x)
-	ax.set_xticklabels([DATASETS[ds]["label"] for ds in DATASETS])
-
-	# Custom legend for left/right bar position
-	from matplotlib.patches import Patch
-	ax.legend(
-		handles=[
-			Patch(facecolor="#888888", label="M1c (lighter shade)"),
-			Patch(facecolor="#444444", label="M2 (darker shade)"),
-		]
-	)
-	apply_clean_style(ax)
-
-	# Add test N annotation
-	for i, ds in enumerate(DATASETS):
-		ax.annotate(
-			f"Test N={all_results[ds]['n_test']}",
-			xy=(x[i], -0.02),
-			ha="center",
-			fontsize=9,
-			color="gray",
-		)
-
-	# Right panel: Delta (M2 - M1c) using dataset base colors with propagated uncertainty
-	ax = axes[1]
-	deltas = [all_results[ds]["test"]["M2"]["point"] - all_results[ds]["test"]["M1c"]["point"] for ds in DATASETS]
-
-	# Propagate uncertainty: approximate combined std from bootstrap samples
-	# For difference, use quadrature: std_delta ≈ sqrt(std_m2² + std_m1c²)
-	delta_stds = [
-		np.sqrt(all_results[ds]["test"]["M2"]["std"]**2 + all_results[ds]["test"]["M1c"]["std"]**2)
-		for ds in DATASETS
-	]
-	# Convert to 95% CI (±1.96 * std for approximate normal)
-	delta_errs = [1.96 * std for std in delta_stds]
-
-	colors = [DATASET_PALETTES[ds]["base"] for ds in datasets_list]
-
-	ax.bar(x, deltas, color=colors, edgecolor="white", linewidth=0.5,
-		   yerr=delta_errs, capsize=4, error_kw={"ecolor": "black", "elinewidth": 1})
-	ax.axhline(y=0, color="black", linestyle="-", linewidth=0.5)
-	ax.set_xlabel("Dataset")
-	ax.set_ylabel("ΔR² (M2 - M1c)")
-	ax.set_title(
-		"Sequential Improvement Over Topic Model Baseline (95% CI)", fontweight="bold"
-	)
-	ax.set_xticks(x)
-	ax.set_xticklabels([DATASETS[ds]["label"] for ds in DATASETS])
-	apply_clean_style(ax)
-
-	# Add percentage improvement
-	for i, (ds, delta) in enumerate(zip(DATASETS, deltas)):
-		m1c_score = all_results[ds]["test"]["M1c"]["point"]
-		if m1c_score > 0:
-			pct = (delta / m1c_score) * 100
-			ax.annotate(
-				f"{delta:+.4f}\n({pct:+.1f}%)",
-				xy=(i, delta + delta_errs[i] if delta > 0 else delta - delta_errs[i]),
-				ha="center",
-				va="bottom" if delta > 0 else "top",
-				fontsize=9,
-			)
-
-	plt.tight_layout()
-	filename = f"m1_vs_m2_test_comparison{FIGURE_SUFFIX}.png"
-	plt.savefig(SCRIPT_DIR / filename, dpi=300, bbox_inches="tight")
-	plt.close()
-	print(f"Saved: {filename}")
-
-
-def plot_m1_breakdown(all_results):
-	"""Figure 3: M1 Breakdown (structure vs content) with 95% CI error bars."""
-	fig, ax = plt.subplots(figsize=(10, 6))
-
-	models = ["M1a", "M1b", "M1c"]
-	model_labels = ["M1a (Structure)", "M1b (Content)", "M1c (Both)"]
-	x = np.arange(len(DATASETS))
-	width = 0.25
-	datasets_list = list(DATASETS.keys())
-
-	for i, (model, label) in enumerate(zip(models, model_labels)):
-		scores = [all_results[ds]["test"][model]["point"] for ds in DATASETS]
-		# Calculate asymmetric error bars
-		lower_errs = [all_results[ds]["test"][model]["point"] - all_results[ds]["test"][model]["ci_lower"] for ds in DATASETS]
-		upper_errs = [all_results[ds]["test"][model]["ci_upper"] - all_results[ds]["test"][model]["point"] for ds in DATASETS]
-		# Use dataset-specific colors for each model
-		colors = [DATASET_PALETTES[ds][model] for ds in datasets_list]
-		# Plot each bar individually with its color and error bar
-		for j, ds in enumerate(datasets_list):
-			ax.bar(x[j] + i * width, scores[j], width, color=colors[j], edgecolor="white", linewidth=0.5,
-				   yerr=[[lower_errs[j]], [upper_errs[j]]], capsize=2, error_kw={"ecolor": "black", "elinewidth": 1})
-
-	ax.set_xlabel("Dataset")
-	ax.set_ylabel("Test R²")
-	ax.set_title(
-		"M1 Breakdown: Structure vs Content Presence Features (95% CI)", fontweight="bold"
-	)
-	ax.set_xticks(x + width)
-	ax.set_xticklabels([DATASETS[ds]["label"] for ds in DATASETS])
-
-	# Custom legend showing models (using gray shades)
-	from matplotlib.patches import Patch
-	model_legend = [
-		Patch(facecolor="#cccccc", edgecolor="black", label="M1a (Structure)"),
-		Patch(facecolor="#999999", edgecolor="black", label="M1b (Content)"),
-		Patch(facecolor="#666666", edgecolor="black", label="M1c (Both)"),
-	]
-	ax.legend(handles=model_legend, title="Model (light→dark)")
-	apply_clean_style(ax)
-
-	plt.tight_layout()
-	filename = f"m1_breakdown{FIGURE_SUFFIX}.png"
-	plt.savefig(SCRIPT_DIR / filename, dpi=300, bbox_inches="tight")
-	plt.close()
-	print(f"Saved: {filename}")
-
-
-def plot_feature_categories(all_results):
-	"""Figure 4: M2 Feature Category Breakdown as Stacked Bar Chart."""
-	fig, ax = plt.subplots(figsize=(10, 6))
+def plot_feature_categories(results_no_length, results_with_length):
+	"""Figure 4: M2 Feature Category Breakdown as Stacked Bar Chart (two panels)."""
+	fig, axes = plt.subplots(1, 2, figsize=(14, 6))
 
 	category_colors = {
 		"Structure Position": "#e74c3c",
@@ -1112,7 +909,6 @@ def plot_feature_categories(all_results):
 		"Content Chains (len-2)": "#9b59b6",
 	}
 
-	# Define categories in stacking order
 	categories = [
 		"Structure Position",
 		"Content Position",
@@ -1121,50 +917,62 @@ def plot_feature_categories(all_results):
 		"Content Chains (len-2)",
 	]
 
-	# Build data matrix: datasets x categories
 	datasets_list = list(DATASETS.keys())
 	x = np.arange(len(datasets_list))
 
-	# Stack bars from bottom
-	bottom = np.zeros(len(datasets_list))
+	panels = [
+		(axes[0], results_no_length, "(A) Without Length Control"),
+		(axes[1], results_with_length, "(B) With Length Control"),
+	]
 
-	for cat in categories:
-		counts = [
-			len(all_results[ds]["feature_categories"].get(cat, []))
-			for ds in datasets_list
-		]
-		bars = ax.bar(
-			x, counts, bottom=bottom, label=cat, color=category_colors[cat]
-		)
+	for ax, all_results, title in panels:
+		bottom = np.zeros(len(datasets_list))
+		for cat in categories:
+			counts = [
+				len(all_results[ds]["feature_categories"].get(cat, []))
+				for ds in datasets_list
+			]
+			ax.bar(x, counts, bottom=bottom, label=cat, color=category_colors[cat])
 
-		# Add count labels on segments (if count > 0)
-		for i, (count, b) in enumerate(zip(counts, bottom)):
-			if count > 0:
-				ax.text(
-					i, b + count / 2, str(count),
-					ha="center", va="center", fontsize=9, fontweight="bold"
-				)
+			for i, (count, b) in enumerate(zip(counts, bottom)):
+				if count > 0:
+					ax.text(
+						i, b + count / 2, str(count),
+						ha="center", va="center", fontsize=11, fontweight="bold"
+					)
 
-		bottom = bottom + np.array(counts)
+			bottom = bottom + np.array(counts)
 
-	ax.set_xticks(x)
-	ax.set_xticklabels([DATASETS[ds]["label"] for ds in datasets_list])
-	ax.set_xlabel("Synthesis Type")
-	ax.set_ylabel("Number of Selected Features")
-	ax.legend(
-		loc="center left",
-		bbox_to_anchor=(1.0, 0.5),
-		fontsize=10,
+		ax.set_xticks(x)
+		ax.set_xticklabels([DATASETS[ds]["label"] for ds in datasets_list], fontsize=12)
+		ax.set_xlabel("Synthesis Type", fontsize=13)
+		ax.set_ylabel("Number of Selected Features", fontsize=13)
+		ax.set_title(title, fontweight="bold", fontsize=14)
+		ax.tick_params(axis="both", labelsize=11)
+		apply_clean_style(ax)
+
+	# Sync y-axis across panels
+	y_max = max(ax.get_ylim()[1] for ax in axes)
+	for ax in axes:
+		ax.set_ylim(0, y_max)
+
+	# Single shared legend
+	handles, labels = axes[0].get_legend_handles_labels()
+	fig.legend(
+		handles, labels,
+		loc="lower center",
+		bbox_to_anchor=(0.5, -0.02),
+		ncol=len(categories),
+		fontsize=11,
 		frameon=False,
 	)
-	ax.set_title("LASSO: Selected Features by Category", fontweight="bold")
-	apply_clean_style(ax)
 
-	plt.tight_layout(rect=[0, 0, 0.82, 0.95])
-	filename = f"m2_feature_categories{FIGURE_SUFFIX}.png"
-	plt.savefig(SCRIPT_DIR / filename, dpi=300, bbox_inches="tight")
+	plt.tight_layout(rect=[0, 0.06, 1, 1])
+	suffix = "_rank" if RESPONSE_VARIABLE == "rank_score" else ""
+	filename = f"m2_feature_categories{suffix}.pdf"
+	plt.savefig(FIGURES_DIR / filename, dpi=300, bbox_inches="tight")
 	plt.close()
-	print(f"Saved: {filename}")
+	logger.info(f"Saved: {filename}")
 
 
 def plot_top_features(all_results):
@@ -1284,59 +1092,72 @@ def plot_top_features(all_results):
 	)
 
 	plt.tight_layout(rect=[0, 0.03, 1, 1])
-	filename = f"m2_top_features{FIGURE_SUFFIX}.png"
-	plt.savefig(SCRIPT_DIR / filename, dpi=300, bbox_inches="tight")
+	filename = f"m2_top_features{FIGURE_SUFFIX}.pdf"
+	plt.savefig(FIGURES_DIR / filename, dpi=300, bbox_inches="tight")
 	plt.close()
-	print(f"Saved: {filename}")
+	logger.info(f"Saved: {filename}")
 
 
-def plot_alpha_selection(all_results):
-	"""Figure 6: Alpha Selection Curves."""
-	fig, ax = plt.subplots(figsize=(10, 6))
+def plot_alpha_selection(results_no_length, results_with_length):
+	"""Figure 6: Alpha Selection Curves (two panels)."""
+	fig, axes = plt.subplots(1, 2, figsize=(14, 6))
 	datasets_list = list(DATASETS.keys())
 
-	for ds in datasets_list:
-		result = all_results[ds]
-		alpha_df = result["alpha_results"]
-		base_color = DATASET_PALETTES[ds]["base"]
+	panels = [
+		(axes[0], results_no_length, "(A) Without Length Control"),
+		(axes[1], results_with_length, "(B) With Length Control"),
+	]
 
-		ax.errorbar(
-			alpha_df["alpha"],
-			alpha_df["mean"],
-			yerr=alpha_df["std"],
-			marker="o",
-			capsize=3,
-			label=result["label"],
-			color=base_color,
-			linewidth=2,
-		)
+	for ax, all_results, title in panels:
+		for ds in datasets_list:
+			result = all_results[ds]
+			alpha_df = result["alpha_results"]
+			base_color = DATASET_PALETTES[ds]["base"]
 
-		# Mark best alpha
-		best_idx = alpha_df["mean"].idxmax()
-		best = alpha_df.loc[best_idx]
-		ax.scatter(
-			[best["alpha"]],
-			[best["mean"]],
-			marker="*",
-			s=200,
-			color=base_color,
-			zorder=5,
-		)
+			ax.errorbar(
+				alpha_df["alpha"],
+				alpha_df["mean"],
+				yerr=alpha_df["std"],
+				marker="o",
+				capsize=3,
+				label=result["label"],
+				color=base_color,
+				linewidth=2,
+			)
 
-	ax.set_xscale("log")
-	ax.set_xlabel("Alpha (log scale)")
-	ax.set_ylabel("CV R²")
-	ax.set_title("M2 LASSO: Alpha Selection via Cross-Validation", fontweight="bold")
-	ax.legend()
-	ax.spines["top"].set_visible(False)
-	ax.spines["right"].set_visible(False)
-	ax.grid(True, alpha=0.3, zorder=0, axis="y")
+			best_idx = alpha_df["mean"].idxmax()
+			best = alpha_df.loc[best_idx]
+			ax.scatter(
+				[best["alpha"]],
+				[best["mean"]],
+				marker="*",
+				s=200,
+				color=base_color,
+				zorder=5,
+			)
+
+		ax.set_xscale("log")
+		ax.set_xlabel("Alpha (log scale)", fontsize=13)
+		ax.set_ylabel("CV R²", fontsize=13)
+		ax.set_title(title, fontweight="bold", fontsize=14)
+		ax.legend(fontsize=11)
+		ax.tick_params(axis="both", labelsize=11)
+		ax.spines["top"].set_visible(False)
+		ax.spines["right"].set_visible(False)
+		ax.grid(True, alpha=0.3, zorder=0, axis="y")
+
+	# Sync y-axis across panels
+	y_min = min(ax.get_ylim()[0] for ax in axes)
+	y_max = max(ax.get_ylim()[1] for ax in axes)
+	for ax in axes:
+		ax.set_ylim(y_min, y_max)
 
 	plt.tight_layout()
-	filename = f"m2_alpha_selection{FIGURE_SUFFIX}.png"
-	plt.savefig(SCRIPT_DIR / filename, dpi=300, bbox_inches="tight")
+	suffix = "_rank" if RESPONSE_VARIABLE == "rank_score" else ""
+	filename = f"m2_alpha_selection{suffix}.pdf"
+	plt.savefig(FIGURES_DIR / filename, dpi=300, bbox_inches="tight")
 	plt.close()
-	print(f"Saved: {filename}")
+	logger.info(f"Saved: {filename}")
 
 
 def plot_main_figure(all_results):
@@ -1432,43 +1253,76 @@ def plot_main_figure(all_results):
 	apply_clean_style(ax)
 
 	plt.tight_layout()
-	filename = f"m1_vs_m2_main_figure{FIGURE_SUFFIX}.png"
-	plt.savefig(SCRIPT_DIR / filename, dpi=300, bbox_inches="tight")
+	filename = f"m1_vs_m2_main_figure{FIGURE_SUFFIX}.pdf"
+	plt.savefig(FIGURES_DIR / filename, dpi=300, bbox_inches="tight")
 	plt.close()
-	print(f"Saved: {filename}")
+	logger.info(f"Saved: {filename}")
 
 
-def generate_latex_table(all_results):
-	"""Generate LaTeX table code for the summary statistics.
+def _fmt_r2(result_dict):
+	"""Format R² as point ± half-width (e.g., 0.366\\,$\\pm$\\,0.037)."""
+	pt = result_dict["point"]
+	hw = (result_dict["ci_upper"] - result_dict["ci_lower"]) / 2
+	return f"{pt:.3f}\\,$\\pm$\\,{hw:.3f}"
 
-	Returns the LaTeX code as a string and also prints it.
+
+
+def generate_latex_table(results_no_length, results_with_length):
+	"""Generate LaTeX table with all models, two sections (with/without length control).
+
+	Args:
+		results_no_length: Results dict from run without length control.
+		results_with_length: Results dict from run with length control.
+
+	Returns the LaTeX code as a string and saves to file.
 	"""
 	lines = []
 	lines.append(r"\begin{table}[htbp]")
 	lines.append(r"\centering")
-	lines.append(r"\caption{Model comparison: Topic model baseline (M1c) vs.\ sequential model (M2). "
-				 r"R² values are reported with 95\% bootstrap confidence intervals.}")
-	lines.append(r"\label{tab:m1_vs_m2_results}")
+	lines.append(r"\small")
+	lines.append(r"\caption{Model comparison across synthesis types. "
+				 r"R$^2$ values on held-out test set with 95\% bootstrap CI ($\pm$ half-width). ")
+	lines.append(r"\label{tab:argument_generation_results}")
 	lines.append(r"\begin{tabular}{lcccccc}")
 	lines.append(r"\toprule")
-	lines.append(r"Synthesis & N (train/test) & M1c R² & M2 R² & $\Delta$R² & \% Gain \\")
+	lines.append(
+		r"Synthesis & N & M0 R$^2$ & M1a R$^2$ & M1b R$^2$ & M1c R$^2$ & M2 R$^2$ \\"
+	)
 	lines.append(r"\midrule")
 
+	# --- Section 1: Without length control ---
+	models_no_len = ["M1a", "M1b", "M1c", "M2"]
 	for ds in DATASETS:
-		result = all_results[ds]
-		m1c = result["test"]["M1c"]
-		m2 = result["test"]["M2"]
-		delta = m2["point"] - m1c["point"]
-		pct = (delta / m1c["point"] * 100) if m1c["point"] > 0 else 0
+		r = results_no_length[ds]
 
-		# Format with CI
-		m1c_str = f"{m1c['point']:.3f} [{m1c['ci_lower']:.3f}, {m1c['ci_upper']:.3f}]"
-		m2_str = f"{m2['point']:.3f} [{m2['ci_lower']:.3f}, {m2['ci_upper']:.3f}]"
+		cols = [
+			r["label"],
+			f"{r['n_train']}/{r['n_test']}",
+			"--",  # M0 not available without length control
+		]
+		for m in models_no_len:
+			val = _fmt_r2(r["test"][m])
+			cols.append(r"\textbf{" + val + "}" if m == "M2" else val)
+		lines.append(" & ".join(cols) + " \\\\")
 
-		lines.append(
-			f"{result['label']} & {result['n_train']}/{result['n_test']} & "
-			f"{m1c_str} & {m2_str} & {delta:+.3f} & {pct:+.1f}\\% \\\\"
-		)
+	# --- Separator for length control section ---
+	lines.append(r"\midrule")
+	lines.append(r"\multicolumn{7}{l}{\textit{+ Argument length control}} \\")
+	lines.append(r"\midrule")
+
+	# --- Section 2: With length control ---
+	models_with_len = ["M0", "M1a", "M1b", "M1c", "M2"]
+	for ds in DATASETS:
+		r = results_with_length[ds]
+
+		cols = [
+			r["label"],
+			f"{r['n_train']}/{r['n_test']}",
+		]
+		for m in models_with_len:
+			val = _fmt_r2(r["test"][m])
+			cols.append(r"\textbf{" + val + "}" if m == "M2" else val)
+		lines.append(" & ".join(cols) + " \\\\")
 
 	lines.append(r"\bottomrule")
 	lines.append(r"\end{tabular}")
@@ -1476,10 +1330,16 @@ def generate_latex_table(all_results):
 
 	latex_code = "\n".join(lines)
 
-	print("\n" + "=" * 70)
-	print("LaTeX Table Code")
-	print("=" * 70)
-	print(latex_code)
+	# Save to file
+	out_path = SCRIPT_DIR / ".." / ".." / "paper" / "latex" / "tables" / "argument_generation_results.tex"
+	out_path.parent.mkdir(parents=True, exist_ok=True)
+	out_path.write_text(latex_code)
+	logger.info(f"Saved LaTeX table: {out_path.resolve()}")
+
+	logger.info("\n" + "=" * 70)
+	logger.info("LaTeX Table Code")
+	logger.info("=" * 70)
+	logger.info(latex_code)
 
 	return latex_code
 
@@ -1661,10 +1521,10 @@ def plot_summary_dashboard(all_results, show_ci=True):
 
 	plt.tight_layout()
 	ci_suffix = "_ci" if show_ci else "_no_ci"
-	filename = f"m1_vs_m2_summary_dashboard{ci_suffix}{FIGURE_SUFFIX}.png"
-	plt.savefig(SCRIPT_DIR / filename, dpi=300, bbox_inches="tight")
+	filename = f"m1_vs_m2_summary_dashboard{ci_suffix}{FIGURE_SUFFIX}.pdf"
+	plt.savefig(FIGURES_DIR / filename, dpi=300, bbox_inches="tight")
 	plt.close()
-	print(f"Saved: {filename}")
+	logger.info(f"Saved: {filename}")
 
 
 # =============================================================================
@@ -1672,44 +1532,160 @@ def plot_summary_dashboard(all_results, show_ci=True):
 # =============================================================================
 
 
-def main():
-	print("=" * 70)
-	print("M1 vs M2 Summary Analysis")
-	print("=" * 70)
-	print(f"\nResponse Variable: {RESPONSE_VARIABLE}")
-	if RESPONSE_VARIABLE == "rank_score":
-		print("  (rank_score = rank of bt_score / n_arguments)")
-	print("\nM1 = Topic Model Baseline (presence features - what elements were used)")
-	print("M2 = Sequential Model (position + interactions + chains - when and how)")
-	print()
+def export_coefficients_csv(all_results):
+	"""Export M2 LASSO coefficients to CSV for each dataset."""
+	for ds_name, result in all_results.items():
+		selected = result["selected_features"]
+		rows = []
+		for feat, coef in selected.items():
+			rows.append({
+				"feature": feat,
+				"coefficient": coef,
+				"abs_coefficient": abs(coef),
+				"category": categorize_feature(feat),
+			})
+		coef_df = pd.DataFrame(rows)
+		subdir = ARGUMENT_DATA_DIR / f"synthesis_{ds_name}"
+		subdir.mkdir(parents=True, exist_ok=True)
+		out_path = subdir / f"m2_coefficients_{ds_name}.csv"
+		coef_df.to_csv(out_path, index=False)
+		logger.info(f"Saved: {out_path} ({len(coef_df)} non-zero coefficients)")
 
-	# Analyze all datasets
+
+def export_trajectory_predictions(all_results):
+	"""Export full trajectory prediction table (all combos) for each dataset."""
+	for ds_name, result in all_results.items():
+		logger.info(f"\nBuilding trajectory predictions for {ds_name}...")
+		model_m2 = result["model_m2"]
+		m2_columns = result["m2_columns"]
+		df = result["df"]
+
+		# Generate all 1M combinations
+		combos = list(itertools.product(
+			STRUCTURES, SUBTOPICS,
+			STRUCTURES, SUBTOPICS,
+			STRUCTURES, SUBTOPICS,
+		))
+		combo_df = pd.DataFrame(combos, columns=[
+			"structure_1", "content_1",
+			"structure_2", "content_2",
+			"structure_3", "content_3",
+		])
+
+		# Build M2 binary features from synthetic DataFrame
+		# (no final_argument column, so skip length; reindex fills it with 0 = mean)
+		synthetic_df = combo_df.copy()
+		X_syn = pd.concat(
+			[
+				create_structure_position(synthetic_df, STRUCTURES),
+				create_content_position(synthetic_df, SUBTOPICS),
+				create_position_interactions(synthetic_df, STRUCTURES, SUBTOPICS),
+				create_structure_chains(synthetic_df, STRUCTURES),
+				create_content_chains(synthetic_df, SUBTOPICS),
+			],
+			axis=1,
+		)
+		X_syn = X_syn.loc[:, ~X_syn.columns.duplicated()]
+		X_syn = X_syn.reindex(columns=m2_columns, fill_value=0)
+
+		# Predict
+		combo_df["predicted_score"] = model_m2.predict(X_syn)
+
+		# Compute observed aggregates
+		group_cols = [
+			"structure_1", "content_1",
+			"structure_2", "content_2",
+			"structure_3", "content_3",
+		]
+		observed = (
+			df.groupby(group_cols)[RESPONSE_VARIABLE]
+			.agg(["mean", "count"])
+			.rename(columns={"mean": "actual_score_mean", "count": "n_observed"})
+			.reset_index()
+		)
+
+		# Left-join
+		combo_df = combo_df.merge(observed, on=group_cols, how="left")
+
+		# Sort by predicted score descending
+		combo_df = combo_df.sort_values("predicted_score", ascending=False)
+
+		subdir = ARGUMENT_DATA_DIR / f"synthesis_{ds_name}"
+		subdir.mkdir(parents=True, exist_ok=True)
+		out_path = subdir / f"m2_trajectory_rankings_{ds_name}.csv"
+		combo_df.to_csv(out_path, index=False)
+		logger.info(f"Saved: {out_path} ({len(combo_df)} rows)")
+
+
+def main():
+	global INCLUDE_LENGTH_CONTROL, FIGURE_SUFFIX
+
+	logger.info("=" * 70)
+	logger.info("M1 vs M2 Summary Analysis")
+	logger.info("=" * 70)
+	logger.info(f"\nResponse Variable: {RESPONSE_VARIABLE}")
+	if RESPONSE_VARIABLE == "rank_score":
+		logger.info("  (rank_score = rank of bt_score / n_arguments)")
+	logger.info("\nM1 = Topic Model Baseline (presence features - what elements were used)")
+	logger.info("M2 = Sequential Model (position + interactions + chains - when and how)")
+
+	# --- Run analysis WITHOUT length control (for table section 1) ---
+	logger.info("\n" + "=" * 70)
+	logger.info("Running analysis WITHOUT length control")
+	logger.info("=" * 70)
+	INCLUDE_LENGTH_CONTROL = False
+	results_no_length = {}
+	for name, config in DATASETS.items():
+		results_no_length[name] = analyze_dataset(name, config)
+
+	# --- Run analysis WITH length control (for table section 2 + figures) ---
+	logger.info("\n" + "=" * 70)
+	logger.info("Running analysis WITH length control")
+	logger.info("=" * 70)
+	INCLUDE_LENGTH_CONTROL = True
+	FIGURE_SUFFIX = ("_rank" if RESPONSE_VARIABLE == "rank_score" else "") + "_arg_length"
 	all_results = {}
 	for name, config in DATASETS.items():
 		all_results[name] = analyze_dataset(name, config)
 
-	# Generate visualizations
-	print("\n" + "=" * 70)
-	print("Generating Visualizations")
-	print("=" * 70)
+	# Export CSVs (from length-controlled run)
+	logger.info("\n" + "=" * 70)
+	logger.info("Exporting CSVs")
+	logger.info("=" * 70)
+	export_coefficients_csv(all_results)
+	export_trajectory_predictions(all_results)
+
+	# Generate visualizations (from length-controlled run)
+	logger.info("\n" + "=" * 70)
+	logger.info("Generating Visualizations")
+	logger.info("=" * 70)
 
 	plot_length_histograms()  # Argument length distributions
-	plot_main_figure(all_results)  # Main figure for paper body
-	plot_cv_comparison(all_results)
-	plot_test_comparison(all_results)
-	plot_m1_breakdown(all_results)
-	plot_feature_categories(all_results)
+
+	# Performance plots WITHOUT length control
+	INCLUDE_LENGTH_CONTROL = False
+	FIGURE_SUFFIX = "_rank" if RESPONSE_VARIABLE == "rank_score" else ""
+	plot_main_figure(results_no_length)
+	plot_top_features(results_no_length)
+
+	# Performance plots WITH length control
+	INCLUDE_LENGTH_CONTROL = True
+	FIGURE_SUFFIX = ("_rank" if RESPONSE_VARIABLE == "rank_score" else "") + "_arg_length"
+	plot_main_figure(all_results)
 	plot_top_features(all_results)
-	plot_alpha_selection(all_results)
+
+	# Combined plots (already handle both conditions)
+	plot_feature_categories(results_no_length, all_results)
+	plot_alpha_selection(results_no_length, all_results)
 	plot_summary_dashboard(all_results, show_ci=True)
 
-	# Generate LaTeX table
-	generate_latex_table(all_results)
+	# Generate LaTeX table (both sections)
+	generate_latex_table(results_no_length, all_results)
 
 	# Print summary
-	print("\n" + "=" * 70)
-	print("SUMMARY: Topic Model (M1c) vs Sequential Model (M2)")
-	print("=" * 70)
+	logger.info("\n" + "=" * 70)
+	logger.info("SUMMARY: Topic Model (M1c) vs Sequential Model (M2)")
+	logger.info("=" * 70)
 
 	for ds in DATASETS:
 		result = all_results[ds]
@@ -1717,42 +1693,42 @@ def main():
 		m2 = result["test"]["M2"]
 		delta = m2["point"] - m1c["point"]
 		pct = (delta / m1c["point"] * 100) if m1c["point"] > 0 else 0
-		print(f"\n{result['label']} (N={result['n_train']} train, {result['n_test']} test):")
-		print(f"  M1c (Topic Baseline): R² = {m1c['point']:.4f} [{m1c['ci_lower']:.4f}, {m1c['ci_upper']:.4f}]")
-		print(f"  M2 (Sequential):      R² = {m2['point']:.4f} [{m2['ci_lower']:.4f}, {m2['ci_upper']:.4f}]")
-		print(f"  Improvement:          ΔR² = {delta:+.4f} ({pct:+.1f}%)")
-		print(f"  M2 Best Alpha:        {result['best_alpha']}")
-		print(f"  M2 Selected Features: {result['n_features']['M2_selected']}/{result['n_features']['M2']}")
+		logger.info(f"\n{result['label']} (N={result['n_train']} train, {result['n_test']} test):")
+		logger.info(f"  M1c (Topic Baseline): R² = {m1c['point']:.4f} [{m1c['ci_lower']:.4f}, {m1c['ci_upper']:.4f}]")
+		logger.info(f"  M2 (Sequential):      R² = {m2['point']:.4f} [{m2['ci_lower']:.4f}, {m2['ci_upper']:.4f}]")
+		logger.info(f"  Improvement:          ΔR² = {delta:+.4f} ({pct:+.1f}%)")
+		logger.info(f"  M2 Best Alpha:        {result['best_alpha']}")
+		logger.info(f"  M2 Selected Features: {result['n_features']['M2_selected']}/{result['n_features']['M2']}")
 
 	# Key findings
-	print("\n" + "=" * 70)
-	print("KEY FINDINGS")
-	print("=" * 70)
+	logger.info("\n" + "=" * 70)
+	logger.info("KEY FINDINGS")
+	logger.info("=" * 70)
 
 	avg_m1c = np.mean([all_results[ds]["test"]["M1c"]["point"] for ds in DATASETS])
 	avg_m2 = np.mean([all_results[ds]["test"]["M2"]["point"] for ds in DATASETS])
 	avg_delta = avg_m2 - avg_m1c
 	avg_pct = (avg_delta / avg_m1c * 100) if avg_m1c > 0 else 0
 
-	print(f"\nAverage across all datasets:")
-	print(f"  M1c (Topic Baseline): R² = {avg_m1c:.4f}")
-	print(f"  M2 (Sequential):      R² = {avg_m2:.4f}")
-	print(f"  Improvement:          ΔR² = {avg_delta:+.4f} ({avg_pct:+.1f}%)")
+	logger.info(f"\nAverage across all datasets:")
+	logger.info(f"  M1c (Topic Baseline): R² = {avg_m1c:.4f}")
+	logger.info(f"  M2 (Sequential):      R² = {avg_m2:.4f}")
+	logger.info(f"  Improvement:          ΔR² = {avg_delta:+.4f} ({avg_pct:+.1f}%)")
 
 	# Which components matter?
-	print("\nStructure vs Content contribution (M1a vs M1b):")
+	logger.info("\nStructure vs Content contribution (M1a vs M1b):")
 	for ds in DATASETS:
 		result = all_results[ds]
 		m1a = result["test"]["M1a"]
 		m1b = result["test"]["M1b"]
-		print(
+		logger.info(
 			f"  {result['label']}: Structure R²={m1a['point']:.4f} [{m1a['ci_lower']:.4f}, {m1a['ci_upper']:.4f}], "
 			f"Content R²={m1b['point']:.4f} [{m1b['ci_lower']:.4f}, {m1b['ci_upper']:.4f}]"
 		)
 
-	print("\n" + "=" * 70)
-	print("Analysis complete. All figures saved.")
-	print("=" * 70)
+	logger.info("\n" + "=" * 70)
+	logger.info("Analysis complete. All figures saved.")
+	logger.info("=" * 70)
 
 
 if __name__ == "__main__":

@@ -64,27 +64,27 @@ Each action in the `actions` dictionary must include:
 
 ## Current Dimensions
 
-### 1. Causal Structures
+### 1. Structures
 - **Purpose**: Control discourse structure and how ideas connect
 - **Files**: 
-  - `causal_structures.json` (10 core patterns)
-  - `causal_structures_expanded.json` (100+ fine-grained patterns)
+  - `structures.json` (10 core patterns)
+  - `structures_expanded.json` (100+ fine-grained patterns)
 - **Action fields**: `definition`, `prefix`
 - **Example actions**: Causal Reasoning, Conditional, Concession & Contrast, Evidence & Authority
 
-### 2. Causal Styles
+### 2. Styles
 - **Purpose**: Control rhetorical style and expressive techniques
 - **Files**:
-  - `causal_styles.json` (10 core styles)
-  - `causal_styles_expanded.json` (90+ fine-grained styles)
+  - `styles.json` (10 core styles)
+  - `styles_expanded.json` (90+ fine-grained styles)
 - **Action fields**: `definition`, `internal_reasoning`
 - **Example actions**: Figurative Language, Statistical & Data-Driven, Narrative & Anecdote, Measured & Authoritative Tone
 
-### 3. Causal Subtopics
+### 3. Subtopics
 - **Purpose**: Control analytical lens and topical framework
 - **Files**:
-  - `causal_subtopics.json` (10 core frameworks)
-  - `causal_subtopics_expanded.json` (100+ frameworks organized by tier)
+  - `subtopics.json` (10 core frameworks)
+  - `subtopics_expanded.json` (100+ frameworks organized by tier)
 - **Action fields**: `definition`, `internal_reasoning`
 - **Example actions**: Cost-Benefit & Impact Analysis, Rights & Liberties, Justice & Fairness, Ethical Principles
 
@@ -218,7 +218,7 @@ with open("your_dimension.json", "w") as f:
 ### Naming Conventions
 - **Dimensions**: Use descriptive nouns (e.g., "Causal Structures", "Rhetorical Styles")
 - **Actions**: Use clear, specific names that indicate the behavior
-- **Files**: Use snake_case for filenames (e.g., `causal_structures.json`)
+- **Files**: Use snake_case for filenames (e.g., `structures.json`)
 
 ### Writing Definitions
 
@@ -275,7 +275,7 @@ Example loading code:
 ```python
 import json
 
-with open('action_space/causal_structures.json', 'r') as f:
+with open('action_space/structures.json', 'r') as f:
     dimension = json.load(f)
 
 print(f"Dimension: {dimension['name']}")

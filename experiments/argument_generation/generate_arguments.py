@@ -1,54 +1,47 @@
 """
-Explainability Persona Experiment: Single-Topic Argument Generation
+Argument Generation: Multi-Topic TreeOfThoughts Argument Generation
 
-This script runs TreeOfThoughts argument generation for a fixed topic and stance,
-varying only persona and random seed. Designed for explainability inference analysis of how
-personality traits affect reasoning patterns.
+This script runs TreeOfThoughts argument generation across multiple topics and stances
+using SYNTHESIS_RESTRUCTURED output mode. Each job handles one topic/stance combination
+without persona conditioning.
 
-Key differences from persona_experiment.py:
-- Fixed topic/stance (single-use plastics ban, PRO)
-- Takes --persona and --seed as CLI arguments (no iteration)
-- Uses 100-tool action space (10 structures × 10 subtopics)
-- Loads personas from personalities.json (Big Five traits)
-- All jobs write to single CSV for consolidated analysis
+Key features:
+- Takes --topic and --stance as CLI arguments
+- Uses SYNTHESIS_RESTRUCTURED for coherent argument reorganization
+- 100-tool action space (10 structures × 10 subtopics)
+- Individual CSV per job for robustness
+- Fixed seed for consistency across runs
 
 Usage:
-	python experiments/argument_generation/persona_explainability_experiment.py [args...]
+	python experiments/argument_generation/generate_arguments.py [args...]
 
 Example usage:
 
 ```bash
-python experiments/argument_generation/persona_explainability_experiment.py \
+python experiments/argument_generation/generate_arguments.py \
 --model Qwen3-30B-A3B-Instruct-2507 \
 --reranker_model Qwen3-Reranker-8B \
 --generative_gpu_index 0 \
 --reranker_gpu_index 1 \
---outputs_directory experiments/argument_generation/explainability_experiment/ \
---outputs_filename explainability_persona \
---persona openness \
+--outputs_directory experiments/argument_generation/outputs/ \
+--outputs_filename arguments \
+--topic "The government should implement a Universal Basic Income (UBI) for all citizens." \
+--stance PRO \
 --seed 42 \
 --depth 3 \
---n_samples_generation 100 \
---top_k 50 \
+--n_samples_generation 25 \
+--top_k 25 \
 --n_samples_judge 1 \
 --generator_temperature 0.7 \
---experiment_mode synthesis_strict \
+--experiment_mode synthesis_restructured \
 --do_save_tree
-```
-
-For batch submission, use the generated SBATCH scripts:
-```bash
-bash experiments/argument_generation/setup_explainability_experiment.sh
-bash experiments/argument_generation/scripts/explainability_persona/launch_explainability_persona.sh
 ```
 """
 
 import csv
-import json
 import logging
 import os
 import time
-from pathlib import Path
 
 import dspy
 from dotenv import load_dotenv
@@ -62,60 +55,11 @@ from lm.scoring_local_lm import ScoringLocalVLLM
 from predict.tree_of_thoughts import TreeOfThoughts
 from predict.tree_of_thoughts.tree_of_thoughts import TreeOfThoughtsOutput
 from predict.tree_of_thoughts.tree_parameters import TreeOfThoughtsParameters
-from signatures.example_signatures import GenerateArgumentWithReasoningAndPersona
+from signatures.example_signatures import (
+	GenerateArgumentWithReasoning,  # Note: No persona variant
+)
 
 load_dotenv()
-
-# Known structure names from causal_structures.json
-# Used for parsing underscore-joined action strings
-KNOWN_STRUCTURES = [
-	"causal_reasoning",
-	"conditional",
-	"concession_and_contrast",
-	"addition_and_elaboration",
-	"evidence_and_authority",
-	"exemplification",
-	"clarification_and_specification",
-	"emphasis_and_evaluation",
-	"sequence_and_transition",
-	"conclusion_and_summary",
-	"finish",  # Special action for finishing
-]
-
-
-def parse_action_string(action_str: str) -> tuple[str, str]:
-	"""Parse an action string into structure and subtopic components.
-
-	Actions can be in two formats:
-	1. Colon-separated: "structure:subtopic"
-	2. Underscore-joined: "structure_subtopic" (e.g., "concession_and_contrast_risk_and_unintended_consequences")
-
-	Args:
-		action_str: The action string to parse
-
-	Returns:
-		Tuple of (structure, subtopic). If parsing fails, returns (action_str, "").
-	"""
-	if not action_str:
-		return "", ""
-
-	# Try colon-separated format first
-	if ":" in action_str:
-		structure, subtopic = action_str.split(":", 1)
-		return structure, subtopic
-
-	# Try matching known structures as prefix
-	for struct in KNOWN_STRUCTURES:
-		if action_str == struct:
-			# Exact match (e.g., "finish")
-			return struct, ""
-		if action_str.startswith(struct + "_"):
-			subtopic = action_str[len(struct) + 1 :]
-			return struct, subtopic
-
-	# Fallback: couldn't parse
-	return action_str, ""
-
 
 # Set up logging
 logging.basicConfig(
@@ -124,11 +68,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Fixed topic and stance for explainability inference experiment
-TOPIC = "The government should enforce a total ban on single-use plastics."
-STANCE = "PRO"
-
-# Add persona argument to parser
+# Add topic and stance arguments to parser
 argument_generation_group = None
 for action_group in base_parser._action_groups:
 	if action_group.title and "argument generation" in action_group.title.lower():
@@ -142,61 +82,19 @@ if argument_generation_group is None:
 	)
 
 argument_generation_group.add_argument(
-	"--persona",
+	"--topic",
 	type=str,
 	required=True,
-	choices=[
-		"openness",
-		"conscientiousness",
-		"extraversion",
-		"agreeableness",
-		"neuroticism",
-	],
-	help="Big Five personality trait to condition argument generation (from personalities.json)",
+	help="Topic for argument generation (full text)",
 )
 
 argument_generation_group.add_argument(
-	"--subtopics_file",
+	"--stance",
 	type=str,
-	default="causal_subtopics.json",
-	help="Subtopics JSON file name in action_space directory (default: causal_subtopics.json)",
+	required=True,
+	choices=["PRO", "ANTI"],
+	help="Stance on the topic (PRO or ANTI)",
 )
-
-
-def load_persona_from_json(persona_name: str) -> str:
-	"""Load persona internal_reasoning text from personalities.json.
-
-	Args:
-		persona_name: One of: openness, conscientiousness, extraversion, agreeableness, neuroticism
-
-	Returns:
-		Internal reasoning text for the specified persona
-
-	Raises:
-		FileNotFoundError: If personalities.json not found
-		KeyError: If persona_name not in personas data
-	"""
-	repo_root = Path(__file__).parent.parent.parent
-	persona_path = (
-		repo_root / "experiments/noveltybench/action_space/personalities.json"
-	)
-
-	if not persona_path.exists():
-		raise FileNotFoundError(
-			f"Personalities file not found at {persona_path}. "
-			f"Expected at: experiments/noveltybench/action_space/personalities.json"
-		)
-
-	with open(persona_path) as f:
-		personas_data = json.load(f)
-
-	if persona_name not in personas_data["choices"]:
-		available = list(personas_data["choices"].keys())
-		raise KeyError(
-			f"Persona '{persona_name}' not found. Available personas: {available}"
-		)
-
-	return personas_data["choices"][persona_name]["internal_reasoning"]
 
 
 def initialize_models(args):
@@ -261,17 +159,14 @@ def initialize_models(args):
 
 
 def run_generation(args):
-	"""Run argument generation for fixed topic/stance with specified persona and seed."""
-	# Load persona text from personalities.json
-	persona_text = load_persona_from_json(args.persona)
-	logger.info(f"Loaded persona '{args.persona}' from personalities.json")
-	logger.info(f"Persona text: {persona_text[:100]}...")
-
+	"""Run argument generation for specified topic and stance."""
 	generative_lm, reranker_lm = initialize_models(args)
 
+	# Stance is already a string matching ArgumentStance Literal type
+	stance_enum = args.stance
+
 	try:
-		# `experiments/flags.py` defines `--experiment_mode` with `nargs="+"`, so it parses as a list.
-		# This experiment runs a single mode; if multiple are provided, we take the first.
+		# Get experiment mode
 		final_output_kind = (
 			args.experiment_mode[0]
 			if isinstance(args.experiment_mode, list)
@@ -291,15 +186,14 @@ def run_generation(args):
 		# Configure 100-tool action space: 10 structures × 10 subtopics
 		action_space_dir = os.path.join(os.path.dirname(__file__), "action_space")
 		action_space_paths = [
-			os.path.join(action_space_dir, "causal_structures.json"),  # 10 structures
-			os.path.join(action_space_dir, args.subtopics_file),  # 10 subtopics
+			os.path.join(action_space_dir, "structures.json"),  # 10 structures
+			os.path.join(action_space_dir, "subtopics.json"),  # 10 subtopics
 		]
 
 		logger.info(
-			f"\nExplainability Persona Experiment Configuration:\n"
-			f"Topic: {TOPIC}\n"
-			f"Stance: {STANCE}\n"
-			f"Persona: {args.persona}\n"
+			f"\nTopic-Stance Sweep Experiment Configuration:\n"
+			f"Topic: {args.topic}\n"
+			f"Stance: {args.stance}\n"
 			f"Seed: {args.seed}\n"
 			f"Action space paths:\n\t{action_space_paths}\n"
 			f"thought length: {thought_length}\n"
@@ -319,13 +213,11 @@ def run_generation(args):
 		)
 
 		# Calculate max_reasoning_steps from depth
-		# Trajectory structure: root (layer 0) + depth reasoning layers + final response
-		# Controller makes depth+1 decisions (one per layer transition including final)
 		max_reasoning_steps = args.depth
 
-		# Initialize TreeOfThoughts with persona-aware signature
+		# Initialize TreeOfThoughts with basic argument signature (no persona)
 		tot = TreeOfThoughts(
-			generator_signature=GenerateArgumentWithReasoningAndPersona,
+			generator_signature=GenerateArgumentWithReasoning,  # No persona field
 			evaluator_signature=None,
 			generative_lm=generative_lm,
 			reranker_lm=reranker_lm,
@@ -353,6 +245,7 @@ def run_generation(args):
 			depth=args.depth,
 			n_samples_generation=args.n_samples_generation,
 			top_k=args.top_k,
+			top_k_first=args.top_k_first,
 			n_samples_judge=args.n_samples_judge,
 			judge_temperature=args.judge_temperature,
 			generator_temperature=args.generator_temperature,
@@ -362,7 +255,6 @@ def run_generation(args):
 			num_final_candidates=args.num_final_candidates,
 			use_self_consistency=args.use_self_consistency,
 			n_final_responses_per_trajectory=1,  # Single final response per trajectory
-			node_selection_strategy="greedy",
 		)
 
 		# Ensure output directory exists
@@ -376,19 +268,20 @@ def run_generation(args):
 		logger.info(f"CSV results will be saved to: {csv_file_path}")
 
 		# Single generation run
-		logger.info(
-			f"Generating with Persona: {args.persona}, Topic: '{TOPIC}', Stance: '{STANCE}'"
-		)
+		logger.info(f"Generating for Topic: '{args.topic}', Stance: '{args.stance}'")
 
-		# Build input data
+		# Build input data (no persona)
 		input_data = {
-			"topic": TOPIC,
-			"stance": STANCE,
-			"persona": persona_text,
+			"topic": args.topic,
+			"stance": stance_enum,
 		}
 
-		# Construct filename
-		filename = f"{args.outputs_filename}_{args.persona}_seed_{args.seed}.json"
+		# Construct filename for JSON tree (individual file per run)
+		# Create simple topic identifier from first 50 chars
+		topic_slug = "".join(c if c.isalnum() else "_" for c in args.topic[:50])
+		filename = (
+			f"{args.outputs_filename}_{topic_slug.lower()}_{args.stance.lower()}.json"
+		)
 
 		tot_output = tot.forward(
 			state=input_data,
@@ -401,10 +294,8 @@ def run_generation(args):
 		# Export to CSV
 		export_trajectory_to_csv(
 			tot_output=tot_output,
-			topic=TOPIC,
-			stance=STANCE,
-			persona_name=args.persona,
-			persona_text=persona_text,
+			topic=args.topic,
+			stance=args.stance,
 			depth=args.depth,
 			seed=args.seed,
 			timestamp=run_timestamp,
@@ -416,7 +307,7 @@ def run_generation(args):
 			1 for node in tot_output.tree.nodes.values() if not node.children_ids
 		)
 		logger.info(
-			f"Completed Persona: {args.persona}, Topic: '{TOPIC}', Stance: '{STANCE}'. "
+			f"Completed Topic: '{args.topic}', Stance: '{args.stance}'. "
 			f"Exported {num_leaf_nodes} complete arguments (leaf nodes) to CSV."
 		)
 
@@ -432,8 +323,6 @@ def export_trajectory_to_csv(
 	tot_output: TreeOfThoughtsOutput,
 	topic: str,
 	stance: str,
-	persona_name: str,
-	persona_text: str | None,
 	depth: int,
 	seed: int,
 	timestamp: str,
@@ -453,9 +342,7 @@ def export_trajectory_to_csv(
 	Args:
 		tot_output: TreeOfThoughts output with responses and reasoning chains
 		topic: Topic string
-		stance: PRO or ANTI
-		persona_name: Persona identifier (e.g., "openness", "conscientiousness")
-		persona_text: Persona description (internal_reasoning from personalities.json)
+		stance: "PRO" or "ANTI"
 		depth: Tree search depth (number of reasoning layers)
 		seed: Random seed used for generation
 		timestamp: Generation timestamp
@@ -464,12 +351,10 @@ def export_trajectory_to_csv(
 	# Calculate max controller outputs: depth + 1 (includes final "finish" decision)
 	max_controller_outputs = depth + 1
 
-	# Define column structure
+	# Define column structure (no persona columns)
 	base_columns = [
 		"topic",
 		"stance",
-		"persona_name",
-		"persona_text",
 		"seed",
 		"timestamp",
 		"response_index",
@@ -514,12 +399,10 @@ def export_trajectory_to_csv(
 		# Extract reasoning steps (state.reasoning is already list[dict[str, str]])
 		existing_steps = leaf_node.state.reasoning
 
-		# Build base row
+		# Build base row (no persona fields)
 		row = {
 			"topic": topic,
 			"stance": stance,
-			"persona_name": persona_name,
-			"persona_text": persona_text or "",
 			"seed": seed,
 			"timestamp": timestamp,
 			"response_index": leaf_idx,
@@ -548,12 +431,17 @@ def export_trajectory_to_csv(
 				row[f"step_{step_idx}_reasoning"] = ""
 
 			# Controller action and arguments
+			# With JSON-based action spaces, the action format is "structure:subtopic"
 			# Parse the action to extract structure and subtopic
-			# Handles both "structure:subtopic" and "structure_subtopic" formats
 			action_str = controller_output.action
-			structure, subtopic = parse_action_string(action_str)
-			row[f"step_{step_idx}_structure"] = structure
-			row[f"step_{step_idx}_subtopic"] = subtopic
+			if ":" in action_str:
+				structure, subtopic = action_str.split(":", 1)
+				row[f"step_{step_idx}_structure"] = structure
+				row[f"step_{step_idx}_subtopic"] = subtopic
+			else:
+				# Fallback: action doesn't have expected format
+				row[f"step_{step_idx}_structure"] = action_str
+				row[f"step_{step_idx}_subtopic"] = ""
 
 			row[f"step_{step_idx}_action"] = action_str
 			row[f"step_{step_idx}_style"] = ""  # Not used in this experiment

@@ -5,7 +5,7 @@ This script evaluates arguments pairwise using an LLM judge and computes
 Bradley-Terry scores to rank arguments by persuasiveness.
 
 Usage:
-    # Using synthesis_type convenience flag (recommended for explainability experiment)
+    # Using synthesis_type convenience flag (recommended for argument generation experiment)
     python experiments/argument_generation/pairwise_evaluation.py \
         --synthesis_type strict --num_comparisons 10000
 
@@ -24,22 +24,22 @@ Calculate scores from existing comparisons only:
 
 Flags:
     --synthesis_type {strict,faithful,restructured}
-        Synthesis type for explainability experiment. If provided, auto-sets
-        input/output paths to explainability directory structure:
-          input:  explainability/synthesis_{type}/explainability_synthesis_{type}_all_results.csv
-          output: explainability/synthesis_{type}/pairwise_comparisons.jsonl
+        Synthesis type for argument generation experiment. If provided, auto-sets
+        input/output paths to argument_data directory structure:
+          input:  argument_data/synthesis_{type}/explainability_synthesis_{type}_all_results.csv
+          output: argument_data/synthesis_{type}/pairwise_comparisons.jsonl
         Overrides --input_csv and --output_jsonl if specified.
 
     --input_csv PATH
         Path to CSV file containing arguments to evaluate.
         Required columns: topic, stance, final_argument.
         Optional columns: persona_name (included in output if present).
-        Default: experiments/argument_generation/explainability/synthesis_strict/explainability_synthesis_strict_all_results.csv
+        Default: experiments/argument_generation/argument_data/synthesis_strict/explainability_synthesis_strict_all_results.csv
 
     --output_jsonl PATH
         Path to JSONL file for storing pairwise comparison results.
         Each line contains: arg_a_id, arg_b_id, swapped, raw_response, winner_id.
-        Default: experiments/argument_generation/explainability/synthesis_strict/pairwise_comparisons.jsonl
+        Default: experiments/argument_generation/argument_data/synthesis_strict/pairwise_comparisons.jsonl
 
     --num_comparisons N
         Number of pairwise comparisons to perform.
@@ -82,7 +82,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from openai import AsyncOpenAI
-from scipy.optimize import minimize
+from scipy.sparse import csr_matrix
+from sklearn.linear_model import LogisticRegression
 from tqdm.asyncio import tqdm_asyncio
 
 logging.basicConfig(
@@ -262,16 +263,18 @@ async def run_comparisons(
 
 
 def compute_bradley_terry(
-	jsonl_path: Path, n_arguments: int, regularization: float = 0.0
+	jsonl_path: Path, regularization: float = 0.0
 ) -> dict[int, float]:
-	"""Compute Bradley-Terry scores via direct MLE optimization.
+	"""Compute Bradley-Terry scores via sklearn LogisticRegression.
 
-	Uses L-BFGS-B to maximize the log-likelihood directly, which converges
-	much faster than the iterative MM algorithm.
+	Encodes each pairwise comparison as a row in a sparse design matrix
+	with +1 at the winner column and -1 at the loser column, then fits
+	logistic regression to recover log-strength parameters.
+
+	Handles sparse arg_ids natively — no remapping required by callers.
 
 	Args:
 		jsonl_path: Path to JSONL file with pairwise comparisons.
-		n_arguments: Number of arguments.
 		regularization: L2 penalty on log-ratings to prevent extreme values.
 			Set to 0.0 (default) for pure MLE. Higher values shrink ratings
 			toward zero (equal strength).
@@ -284,64 +287,66 @@ def compute_bradley_terry(
 
 	logger.info("Loaded %d pairwise comparisons", len(comparisons))
 
-	# Pre-extract winner/loser pairs for efficiency
-	matches = []
+	# Collect all unique arg_ids and build a dense index mapping
+	all_ids: set[int] = set()
 	for rec in comparisons:
+		all_ids.add(rec["arg_a_id"])
+		all_ids.add(rec["arg_b_id"])
+	id_to_col = {arg_id: idx for idx, arg_id in enumerate(sorted(all_ids))}
+	n_players = len(id_to_col)
+
+	# Build sparse design matrix: each match contributes two rows
+	# (winner=+1, loser=-1) with alternating y labels to ensure both
+	# classes are present for sklearn.
+	rows, cols, vals = [], [], []
+	y = []
+	for i, rec in enumerate(comparisons):
 		a, b = rec["arg_a_id"], rec["arg_b_id"]
-		winner = rec["winner_id"]
-		loser = b if winner == a else a
-		matches.append((winner, loser))
+		winner_id = rec["winner_id"]
+		loser_id = b if winner_id == a else a
+		w_col, l_col = id_to_col[winner_id], id_to_col[loser_id]
 
-	def neg_log_likelihood(ratings: np.ndarray) -> float:
-		"""Negative log-likelihood with L2 regularization."""
-		ll = 0.0
-		for winner, loser in matches:
-			# P(winner > loser) = exp(r_w) / (exp(r_w) + exp(r_l))
-			# log P = r_w - log(exp(r_w) + exp(r_l))
-			diff = ratings[winner] - ratings[loser]
-			ll += diff - np.logaddexp(0, diff)  # log(sigmoid(diff))
-		# L2 regularization to prevent extreme ratings
-		penalty = regularization * np.sum(ratings**2)
-		return -ll + penalty
+		# Row with y=1: winner gets +1, loser gets -1
+		row_idx = 2 * i
+		rows.extend([row_idx, row_idx])
+		cols.extend([w_col, l_col])
+		vals.extend([1.0, -1.0])
+		y.append(1)
 
-	def gradient(ratings: np.ndarray) -> np.ndarray:
-		"""Gradient of negative log-likelihood with L2 regularization."""
-		grad = np.zeros(n_arguments)
-		for winner, loser in matches:
-			diff = ratings[winner] - ratings[loser]
-			prob_loser = 1.0 / (1.0 + np.exp(diff))  # P(loser wins) = sigmoid(-diff)
-			# For negative log-likelihood:
-			# d(-L)/d(r_winner) = -prob_loser (want to increase winner rating)
-			# d(-L)/d(r_loser) = +prob_loser (want to decrease loser rating)
-			grad[winner] -= prob_loser
-			grad[loser] += prob_loser
-		# L2 regularization gradient
-		grad += 2 * regularization * ratings
-		return grad
+		# Row with y=0: flip signs (loser gets +1, winner gets -1)
+		row_idx = 2 * i + 1
+		rows.extend([row_idx, row_idx])
+		cols.extend([l_col, w_col])
+		vals.extend([1.0, -1.0])
+		y.append(0)
 
-	# Initialize ratings to zero (all equal)
-	init_ratings = np.zeros(n_arguments)
-
-	# Optimize using L-BFGS-B
-	result = minimize(
-		neg_log_likelihood,
-		init_ratings,
-		method="L-BFGS-B",
-		jac=gradient,
-		options={"maxiter": 1000},
+	design = csr_matrix(
+		(vals, (rows, cols)), shape=(2 * len(comparisons), n_players)
 	)
+	y_arr = np.array(y)
+
+	# Fit logistic regression (equivalent to Bradley-Terry MLE)
+	n_matches = len(comparisons)
+	reg_c = (
+		1.0 / (2 * regularization * n_matches) if regularization > 0 else np.inf
+	)
+	model = LogisticRegression(
+		fit_intercept=False, C=reg_c, solver="lbfgs", max_iter=1000
+	)
+	model.fit(design, y_arr)
 
 	logger.info(
-		"Optimization %s after %d iterations",
-		"converged" if result.success else "stopped",
-		result.nit,
+		"LogisticRegression converged in %d iterations", model.n_iter_[0]
 	)
 
 	# Convert log-ratings to strength parameters (exp and normalize to mean=1)
-	strengths = np.exp(result.x)
+	log_ratings = model.coef_[0]
+	strengths = np.exp(log_ratings)
 	strengths = strengths / strengths.mean()
 
-	return {i: float(strengths[i]) for i in range(n_arguments)}
+	# Map back to original arg_ids
+	col_to_id = {idx: arg_id for arg_id, idx in id_to_col.items()}
+	return {col_to_id[i]: float(strengths[i]) for i in range(n_players)}
 
 
 def main() -> None:
@@ -351,17 +356,17 @@ def main() -> None:
 		type=str,
 		choices=["strict", "faithful", "restructured"],
 		default=None,
-		help="Synthesis type. If provided, auto-sets input/output paths to explainability directory.",
+		help="Synthesis type. If provided, auto-sets input/output paths to argument_data directory.",
 	)
 	parser.add_argument(
 		"--input_csv",
 		type=str,
-		default="experiments/argument_generation/explainability/synthesis_strict/explainability_synthesis_strict_all_results.csv",
+		default="experiments/argument_generation/argument_data/synthesis_strict/explainability_synthesis_strict_all_results.csv",
 	)
 	parser.add_argument(
 		"--output_jsonl",
 		type=str,
-		default="experiments/argument_generation/explainability/synthesis_strict/pairwise_comparisons.jsonl",
+		default="experiments/argument_generation/argument_data/synthesis_strict/pairwise_comparisons.jsonl",
 	)
 	parser.add_argument("--num_comparisons", type=int, default=10000)
 	parser.add_argument("--model", type=str, default="gpt-5-mini-2025-08-07")
@@ -377,7 +382,7 @@ def main() -> None:
 	# Handle synthesis_type convenience flag
 	if args.synthesis_type:
 		base_dir = Path(
-			f"experiments/argument_generation/explainability/synthesis_{args.synthesis_type}"
+			f"experiments/argument_generation/argument_data/synthesis_{args.synthesis_type}"
 		)
 		input_path = (
 			base_dir / f"explainability_synthesis_{args.synthesis_type}_all_results.csv"
@@ -416,7 +421,7 @@ def main() -> None:
 	# Compute Bradley-Terry scores
 	if output_path.exists():
 		logger.info("Computing Bradley-Terry scores...")
-		scores = compute_bradley_terry(output_path, n_arguments)
+		scores = compute_bradley_terry(output_path)
 
 		# Merge with metadata
 		df["bt_score"] = df["arg_id"].map(scores)
