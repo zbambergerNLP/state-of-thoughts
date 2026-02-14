@@ -6,12 +6,12 @@
 
 **STATe-of-Thoughts** (STATe) is an explainable Inference-Time-Compute (ITC) framework that *searches* over high-level reasoning patterns. STATe replaces stochastic temperature-based sampling with discrete, interpretable textual interventions: a **controller** selects actions encoding high-level reasoning choices, a **generator** produces reasoning steps conditioned on those choices, and an **evaluator** scores candidates to guide beam search.
 
-Built on [DSPy](https://github.com/stanfordnlp/dspy) and [vLLM](https://github.com/vllm-project/vllm), this framework enables local LLMs to perform systematic exploration of reasoning trajectories, evaluate intermediate steps (process supervision), and select optimal paths for complex tasks like argumentation, creative writing, and more.
+Built on [DSPy](https://github.com/stanfordnlp/dspy) and [vLLM](https://github.com/vllm-project/vllm), this framework enables local LLMs to perform systematic exploration of reasoning trajectories, evaluate intermediate steps (process supervision), and select promising paths for complex tasks like argumentation, creative writing, and more.
 
 **Key advantages:**
-1. **Diversity** -- Action-guided textual interventions produce greater response diversity than temperature-based sampling.
-2. **Interpretability** -- Explicit action sequences are highly predictive of output quality.
-3. **Controllability** -- Learned associations between actions and outcomes allow steering generation toward promising regions of the action space.
+1. **Diversity**: Action-guided textual interventions produce greater response diversity than temperature-based sampling.
+2. **Interpretability**: Explicit action sequences are auditable and interpretable. In our experiments, they proved highly predictive of output quality.
+3. **Controllability**: Learned associations between actions and outcomes allow steering generation toward promising regions of the action space.
 
 ---
 
@@ -53,7 +53,9 @@ This project is built on **DSPy**, leveraging its modular approach to prompt eng
 </tr>
 </table>
 
-In this document, we will use a running example of **Argument Generation** to illustrate how these primitives come together to implement the STATe-of-Thoughts framework. Another way to define a Signature is through class-based definitions, as shown in the [Signatures page of "Learn DSPy"](https://dspy.ai/learn/programming/signatures/#class-based-dspy-signatures). We use the following Signature for argument generation:
+In this document, we will use a running example of **Argument Generation** to illustrate how these primitives come together to implement the STATe-of-Thoughts framework.
+
+Signatures can also be defined as classes rather than inline strings (see the [Signatures page of "Learn DSPy"](https://dspy.ai/learn/programming/signatures/#class-based-dspy-signatures)). We use a class-based Signature for argument generation:
 
 ```python
 class GenerateArgument(dspy.Signature):
@@ -62,7 +64,7 @@ class GenerateArgument(dspy.Signature):
     argument: str = dspy.OutputField(desc="The generated argument")
 ```
 
-#### **Instantiation Phase**
+### **Instantiation Phase**
 
 A Module is created by combining a **Signature** (task definition) with a **Language Model** (executes prompts) and **Adapter** (formats prompts and parses outputs).
 The Signature specifies *what* to do; the LM and Adapter determine *how*.
@@ -83,7 +85,7 @@ flowchart LR
     style M fill:#e8f4fd,stroke:#333,color:#000
 ```
 
-#### **Forward (Inference) Phase**
+### **Forward (Inference) Phase**
 
 When the Module is called with an [**Example**](https://dspy.ai/learn/evaluation/data/#dspy-example-objects) (which contains values for input fields matching the Signature), the Adapter formats a prompt, the LM generates a response, and the Adapter parses it back into structured fields returned as a **Prediction**. See additional details about Adapters in the [Adapters documentation](https://dspy.ai/learn/programming/adapters/), more on Language Models in the [LM documentation](https://dspy.ai/learn/programming/language_models/), and about Modules in the [Modules documentation](https://dspy.ai/learn/programming/modules/).
 
@@ -108,9 +110,9 @@ sequenceDiagram
 
 STATe extends Tree of Thoughts (ToT) with three methodological contributions:
 
-1. **Action-guided interventions** -- Replaces stochastic temperature sampling with discrete action templates that diversify branches in tree search.
-2. **Reliable evaluation** -- Supports both verifiable and task-specific LLM-as-a-Judge evaluators to score and select among diverse candidates.
-3. **Action attribution** -- Tracks actions along trajectories, enabling systematic analysis of which reasoning patterns drive performance.
+1. **Action-guided interventions**: Replaces stochastic temperature sampling with discrete action templates that diversify branches in tree search.
+2. **Reliable evaluation**: Supports both verifiable and task-specific LLM-as-a-Judge evaluators to score and select among diverse candidates.
+3. **Action attribution**: Tracks actions along trajectories, enabling systematic analysis of which reasoning patterns drive performance.
 
 ### **Tree of Thoughts Components**
 
@@ -120,7 +122,7 @@ $x$ here represents both the task signature and specific input values, and $Z_i$
 The controller, $C$, selects $n$ interventions from action space $\mathcal{A}$ for each state in the frontier.
 The generator, $G$, then produces completions that extend each of these interventions.
 Finally, $V_{\text{PRM}}(s_i)$ scores intermediate trajectories, while $V_{\text{ORM}}(s_i)$ scores trajectories that produced final answers $y$.
-The top-$k$ intermediate states (i.e., ones that did not produce final answers) are retained for the next layer (beam selection).
+The top-k intermediate states (i.e., ones that did not produce final answers) are retained for the next layer (beam selection).
 
 ```mermaid
 flowchart LR
@@ -182,7 +184,7 @@ Three modules implement the Plan &rarr; Generate &rarr; Evaluate &rarr; Select c
 
 #### **Controller**
 
-The Controller ($C$) observes the current state and selects actions from an action space $\mathcal{A}$. Each action is treated as a *tool call*: selecting an action corresponds to choosing a tool name and providing values for its arguments (if any). Executing the tool returns a `ReasoningIntervention` -- a structured object containing an `internal_reasoning` string (guidance injected into context) and a `prefix` string (text pre-filled at the start of the next generation).
+The Controller ($C$) observes the current state and selects actions from an action space $\mathcal{A}$. Each action is treated as a *tool call*: selecting an action corresponds to choosing a tool name and providing values for its arguments (if any). Executing the tool returns a `ReasoningIntervention`, a structured object containing an `internal_reasoning` string (guidance injected into context) and a `prefix` string (text pre-filled at the start of the next generation).
 
 Two controller implementations exist:
 
@@ -234,7 +236,7 @@ flowchart TD
 | Field | Description | Example |
 |:------|:------------|:--------|
 | `tool` | The selected `dspy.Tool` | tool for `"select_reasoning_intervention"` or `"finish"` |
-| `chosen_values` | Tool arguments (if any) | `{"causal_structures": "causal_reasoning", "causal_subtopics": "justice_and_fairness"}` |
+| `chosen_values` | Tool arguments (if any) | `{"structures": "reasoning", "subtopics": "justice_and_fairness"}` |
 | `intervention` | `ReasoningIntervention` from executing the tool | `ReasoningIntervention(continue_reasoning=True, internal_reasoning="I should analyze whether...", prefix="Therefore")` |
 | `considerations` | Rationale for the choice | `"The argument needs causal structure..."` |
 | `intervention.continue_reasoning` | Whether to generate another reasoning step | `True` / `False` |
@@ -267,14 +269,14 @@ Action spaces define the dimensions along which STATe's controller can intervene
 
 STATe's argument generation experiment uses three action-space dimensions:
 
-**1. Structures** (`experiments/argument_generation/action_space/structures.json`) -- Controls discourse structure via a prefix:
+**1. Structures** (`experiments/argument_generation/action_space/structures.json`): Controls discourse structure via a prefix:
 
 ```json
 {
   "name": "Structures",
   "definition": "Forces the next reasoning step to adhere to a specific discourse structure...",
   "choices": {
-    "causal_reasoning": {
+    "reasoning": {
       "definition": "States causes, effects, consequences, or logical implications.",
       "prefix": "Therefore"
     },
@@ -294,7 +296,7 @@ STATe's argument generation experiment uses three action-space dimensions:
 }
 ```
 
-**2. Subtopics** (`experiments/argument_generation/action_space/subtopics.json`) -- Controls content theme via internal reasoning:
+**2. Subtopics** (`experiments/argument_generation/action_space/subtopics.json`): Controls content theme via internal reasoning:
 
 ```json
 {
@@ -313,7 +315,7 @@ STATe's argument generation experiment uses three action-space dimensions:
 }
 ```
 
-**3. Styles** (`experiments/argument_generation/action_space/styles.json`) -- Controls rhetorical style via internal reasoning:
+**3. Styles** (`experiments/argument_generation/action_space/styles.json`): Controls rhetorical style via internal reasoning:
 
 ```json
 {
@@ -334,16 +336,16 @@ STATe's argument generation experiment uses three action-space dimensions:
 
 **How controllers use action spaces:**
 
-- The **generative controller** creates a *single combined tool* with one parameter per dimension. The LLM generates a choice for each parameter (e.g., `{"causal_structures": "causal_reasoning", "causal_subtopics": "justice_and_fairness", "causal_styles": "statistical_and_data_driven"}`). Executing the tool combines the `internal_reasoning` and `prefix` from all chosen values.
+- The **generative controller** creates a *single combined tool* with one parameter per dimension. The LLM generates a choice for each parameter (e.g., `{"structures": "reasoning", "subtopics": "justice_and_fairness", "styles": "statistical_and_data_driven"}`). Executing the tool combines the `internal_reasoning` and `prefix` from all chosen values.
 
-- The **reranker controller** creates *one tool per combination* of choices across all dimensions (e.g., 10 structures &times; 10 subtopics &times; 10 styles = 1,000 tools). Each tool has a description derived from its choices, and the reranker scores all tools against the current state to select the top-$n$.
+- The **reranker controller** creates *one tool per combination* of choices across all dimensions (e.g., 4 structures &times; 2 subtopics &times; 2 styles = 16 tools). Each tool has a description derived from its choices, and the reranker scores all tools against the current state to select the top-$n$.
 
 **Creating action spaces for your own tasks:**
 
-1. **Identify controllable dimensions** -- Enumerate aspects of generation that can be meaningfully controlled at each step (content, structure, style, strategy).
-2. **Decide prefix vs. internal reasoning** -- Only one dimension can use a prefix; all can use internal reasoning. Structural/discourse dimensions benefit most from prefix control.
-3. **Consider early stopping** -- Include a `finish` tool if variable-depth reasoning is desired. The finish tool is automatically added when `early_stopping_enabled=True` (the default).
-4. **Topic-specific subtopics** -- You can create topic-specific action spaces (see `subtopics_specific_pollution.json` for an example tailored to single-use plastics).
+1. **Identify controllable dimensions**: Enumerate aspects of generation that can be meaningfully controlled at each step (content, structure, style, strategy).
+2. **Decide prefix vs. internal reasoning**: Only one dimension can use a prefix; all can use internal reasoning. Structural/discourse dimensions benefit most from prefix control.
+3. **Consider early stopping**: Include a `finish` tool if variable-depth reasoning is desired. The finish tool is automatically added when `early_stopping_enabled=True` (the default).
+4. **Topic-specific subtopics**: You can create topic-specific action spaces (see `subtopics_specific_pollution.json` for an example tailored to single-use plastics).
 
 See Appendix C of the paper for detailed practitioner guidance on action space design.
 
@@ -391,9 +393,9 @@ The Evaluator ($V$) assigns scalar scores to guide beam search:
 - **ORM (Outcome Reward Model)**: Scores final states $V_{\text{ORM}}(s_i) \to [0,1]$ where $s_i = [x, Z_{i-1}, y]$
 
 Three evaluator implementations are supported:
-1. **Generative LLM-as-a-Judge** -- Scores candidates against a rubric
-2. **Reranker LLM-as-a-Judge** -- Assigns latent relevance scores
-3. **Deterministic verifier** -- Programmatic evaluation (e.g., code correctness)
+1. **Generative LLM-as-a-Judge**: Scores candidates against a rubric
+2. **Reranker LLM-as-a-Judge**: Assigns latent relevance scores
+3. **Deterministic verifier**: Programmatic evaluation (e.g., code correctness)
 
 ```mermaid
 flowchart LR
@@ -570,6 +572,30 @@ outputs = adapter(
 
 ---
 
+## **Installation**
+
+### **Prerequisites**
+
+- **Python 3.12+**
+- **GPUs:** Recommended setup is 2 GPUs (e.g., GPU 0 for Generation, GPU 1 for Reranking)
+
+### **Environment Setup**
+
+```bash
+# Create environment
+conda create -n dspy_reasoning_env python=3.12
+conda activate dspy_reasoning_env
+
+# Install dependencies
+pip install -r requirements_server.txt
+
+# Download models
+huggingface-cli download Qwen/Qwen3-30B-A3B-Instruct-2507 \
+    --local-dir /path/to/model_storage/Qwen3-30B-A3B-Instruct-2507
+```
+
+---
+
 ## **Quick Start**
 
 Here is a minimal example of running a Tree of Thoughts pipeline:
@@ -617,36 +643,6 @@ print(f"Final Answer: {output.answer}")
 
 ---
 
-## **Documentation Map**
-
-- **[Signatures (signatures/)](signatures/README.md)**: Custom fields and reasoning schemas
-
----
-
-## **Installation**
-
-### **Prerequisites**
-
-- **Python 3.12+**
-- **GPUs:** Recommended setup is 2 GPUs (e.g., GPU 0 for Generation, GPU 1 for Reranking)
-
-### **Environment Setup**
-
-```bash
-# Create environment
-conda create -n dspy_reasoning_env python=3.12
-conda activate dspy_reasoning_env
-
-# Install dependencies
-pip install -r requirements_server.txt
-
-# Download models
-huggingface-cli download Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --local-dir /path/to/model_storage/Qwen3-30B-A3B-Instruct-2507
-```
-
----
-
 ## **Usage: Running Experiments**
 
 The main entry point is `experiments/argument_generation/run_argument_generation.py`:
@@ -670,7 +666,7 @@ python experiments/argument_generation/run_argument_generation.py \
       ./experiments/argument_generation/action_space/structures.json
 ```
 
-> **Note:** This script requires **two separate GPUs** by default -- one for the generative model (Generator, Evaluator, and optionally the generative Controller) and one for the reranker model (Controller action scoring).
+> **Note:** This script requires **two separate GPUs** by default: one for the generative model (Generator, Evaluator, and optionally the generative Controller) and one for the reranker model (Controller action scoring).
 
 ### **Key Flags**
 
@@ -678,7 +674,7 @@ python experiments/argument_generation/run_argument_generation.py \
 |:-----|:------------|:--------|
 | `--model` | Generative model name | `Qwen3-30B-A3B-Instruct-2507` |
 | `--reranker_model` | Reranker model for scoring | `Qwen3-Reranker-8B` |
-| `--model_directory` | Directory containing downloaded models | `/projects/BSTEWART/model_storage` |
+| `--model_directory` | Directory containing downloaded models | `./models` |
 | `--generative_gpu_index` | GPU index for generative model | `0` |
 | `--reranker_gpu_index` | GPU index for reranker model | `1` |
 
@@ -752,4 +748,4 @@ pytest test_utilities_for_tests.py                          # Test utilities (Mo
 
 ### **Integration Tests**
 
-Integration tests require access to GPUs and run against real models. Simply run the same tests as above in a system with GPUs, and integration tests will run rather than get skipped.
+Integration tests require access to GPUs and run against real models. GPU availability is detected automatically at test time: tests that need a GPU check for CUDA availability and are skipped via `pytest.mark.skipif` when no GPU is present. Simply run the same `pytest` commands as above on a system with GPUs, and the integration tests will execute instead of being skipped.
