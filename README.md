@@ -15,94 +15,198 @@ Built on [DSPy](https://github.com/stanfordnlp/dspy) and [vLLM](https://github.c
 
 ---
 
-## **Background: DSPy Primitives**
+> **Note:** For background on DSPy primitives (Signatures, Modules, Adapters, etc.) and how they are used in this framework, see our **[Background Guide](BACKGROUND.md)**.
 
-This project is built on **DSPy**, leveraging its modular approach to prompt engineering. DSPy separates **what** a task does ([Signature](https://dspy.ai/learn/programming/signatures/)) from **how** it's executed ([Module](https://dspy.ai/learn/programming/modules/) + [Adapter](https://dspy.ai/learn/programming/adapters/) + [LM](https://dspy.ai/learn/programming/language_models/)).
+---
 
-<table>
-<tr>
-<th align="left">Primitive</th>
-<th align="left">Purpose</th>
-<th align="left">Example</th>
-</tr>
-<tr>
-<td rowspan="3" valign="middle"><b>Fields</b></td>
-<td rowspan="3" valign="middle">Define input/output schema with descriptions</td>
-<td><code>topic: str = InputField(desc="The debate topic")</code></td>
-</tr>
-<tr>
-<td><code>stance: Literal["PRO", "ANTI"] = InputField(desc="Position to argue")</code></td>
-</tr>
-<tr>
-<td><code>argument: str = OutputField(desc="The generated argument")</code></td>
-</tr>
-<tr>
-<td><b>Signatures</b></td>
-<td>Declarative task specification (what to do)</td>
-<td><code>generate_argument = "topic: str, stance: Literal['PRO', 'ANTI'] -> argument: str"</code></td>
-</tr>
-<tr>
-<td><b>Modules</b></td>
-<td>Parameterized layers that execute signatures</td>
-<td><code>dspy.Predict(generate_argument)</code></td>
-</tr>
-<tr>
-<td><b>Adapters</b></td>
-<td>Format prompts from signatures; parse LLM outputs by extracting and type-checking values for each <code>OutputField</code></td>
-<td><code>ChatAdapter</code>, <code>JSONAdapter</code></td>
-</tr>
-</table>
+## **Setup**
 
-In this document, we will use a running example of **Argument Generation** to illustrate how these primitives come together to implement the STATe-of-Thoughts framework.
+### **Prerequisites**
 
-Signatures can also be defined as classes rather than inline strings (see the [Signatures page of "Learn DSPy"](https://dspy.ai/learn/programming/signatures/#class-based-dspy-signatures)). We use a class-based Signature for argument generation:
+- **Python 3.12+**
+- **GPUs:** Recommended setup is 2 GPUs (e.g., GPU 0 for Generation, GPU 1 for Reranking)
+
+### **Environment Setup**
+
+Choose one of the following options to create a Python 3.12+ environment.
+
+#### **(1) Python virtualenv (venv)**
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+pip install -r requirements_server.txt
+```
+
+#### **(2) Conda**
+
+```bash
+conda create -n dspy_reasoning_env python=3.12
+conda activate dspy_reasoning_env
+
+pip install -r requirements_server.txt
+```
+
+#### **(3) uv**
+
+> **Warning:** On macOS, there are known issues installing vLLM with uv-managed environments. Use conda or venv on Mac instead.
+
+```bash
+uv venv --python 3.12
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+uv pip install -r requirements_server.txt
+```
+
+### **Download Models**
+
+After activating your environment (with any of the options above), run the download script:
+
+```bash
+python scripts/download_models.py --model_directory /path/to/model_storage
+```
+
+This downloads the default generative model (Qwen3-30B-A3B-Instruct-2507) and reranker (Qwen3-Reranker-8B). To download specific models:
+
+```bash
+python scripts/download_models.py --model_directory /path/to/model_storage \
+    --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
+    --model Qwen/Qwen3-Reranker-8B
+```
+
+---
+
+## **Quick Start**
+
+### **(1) Minimal example: instantiate and run STATe**
+
+A minimal example for argument generation (consistent with `experiments/argument_generation/`). This instantiates STATe with an action space, reranker controller, and early stopping:
 
 ```python
-class GenerateArgument(dspy.Signature):
-    topic: str = dspy.InputField(desc="The debate topic")
-    stance: Literal["PRO", "ANTI"] = dspy.InputField(desc="Position to argue")
-    argument: str = dspy.OutputField(desc="The generated argument")
+import os
+
+from adapter.constraints import ResponseLength
+from lm.generative_local_lm import GenerativeLocalVLLM
+from lm.scoring_local_lm import ScoringLocalVLLM
+from predict.tree_of_thoughts import TreeOfThoughts
+from predict.tree_of_thoughts.tree_parameters import TreeOfThoughtsParameters
+from signatures.example_signatures import GenerateArgumentWithReasoning
+
+# 1. Initialize models (requires 2 GPUs)
+model_dir = "/path/to/model_storage"
+generative_lm = GenerativeLocalVLLM(
+    model=os.path.join(model_dir, "Qwen3-30B-A3B-Instruct-2507"),
+)
+reranker_lm = ScoringLocalVLLM(
+    model=os.path.join(model_dir, "Qwen3-Reranker-8B"),
+)
+
+# 2. Action space defines controller choices (structure + subtopic dimensions)
+action_space_dir = "experiments/argument_generation/action_space"
+action_space_paths = [
+    os.path.join(action_space_dir, "structures.json"),
+    os.path.join(action_space_dir, "subtopics.json"),
+]
+
+# 3. Instantiate STATe (action space + reranker controller + early stopping)
+state_of_thoughts = TreeOfThoughts(
+    generator_signature=GenerateArgumentWithReasoning,
+    evaluator_signature=None,  # Reranker evaluator derives from generator
+    generative_lm=generative_lm,
+    reranker_lm=reranker_lm,
+    controller_type="reranker",
+    thought_length=ResponseLength(granularity="sentence", bounds=(1, 3)),
+    response_length=ResponseLength(granularity="sentence", bounds=(5, 7)),
+    max_reasoning_steps=3,
+    final_output_kind="synthesis_faithful",
+    action_space_paths=action_space_paths,
+    early_stopping_enabled=True,
+    seed=42,
+)
+
+# 4. Configure tree-search hyperparameters
+tot_parameters = TreeOfThoughtsParameters(
+    depth=3,                      # Max reasoning layers before final output
+    n_samples_generation=5,       # Branching factor (candidates per node)
+    top_k=3,                      # Beam width (candidates kept per layer)
+    n_samples_judge=1,            # Evaluator samples per candidate
+    generator_temperature=0.7,    # Higher = more diverse generations
+    judge_temperature=0.7,        # Evaluator sampling (reranker ignores this)
+    num_final_candidates=1,       # Number of best arguments to return
+    do_pruning=True,              # Prune low-scoring candidates
+)
+
+# 5. Run inference (state keys must match generator signature input fields)
+output = state_of_thoughts.forward(
+    state={"topic": "The government should implement a Universal Basic Income.", "stance": "PRO"},
+    tot_parameters=tot_parameters,
+)
+
+print(output.response_strings[0])
 ```
 
-### **Instantiation Phase**
+### **(2) Run the built-in argument generation script**
 
-A Module is created by combining a **Signature** (task definition) with a **Language Model** (executes prompts) and **Adapter** (formats prompts and parses outputs).
-The Signature specifies *what* to do; the LM and Adapter determine *how*.
+The main entry point for our argument generation experiment is `experiments/argument_generation/generate_arguments.py`:
 
-```mermaid
-flowchart LR
-    S["<b>Signature</b><br/>task definition:<br/>what to do"]
-    LM["<b>Language Model</b><br/>executes prompts:<br/>which LLM to use"]
-    A["<b>Adapter</b><br/>formats prompts &<br/>parses outputs"]
-
-    S --> M["<b>dspy.Module</b>"]
-    LM --> M
-    A --> M
-
-    style S fill:#fff3cd,stroke:#333,color:#000
-    style LM fill:#cfe2ff,stroke:#333,color:#000
-    style A fill:#d1e7dd,stroke:#333,color:#000
-    style M fill:#e8f4fd,stroke:#333,color:#000
+```bash
+python experiments/argument_generation/generate_arguments.py \
+    --model_directory /path/to/model_storage \
+    --topic "The government should implement a Universal Basic Income (UBI) for all citizens." \
+    --stance PRO \
+    --depth 3 \
+    --n_samples_generation 5 \
+    --top_k 3 \
+    --n_samples_judge 1 \
+    --generator_temperature 0.7 \
+    --experiment_mode synthesis_faithful \
+    --outputs_directory ./experiments/argument_generation/outputs \
+    --outputs_filename arguments \
+    --do_save_tree
 ```
 
-### **Forward (Inference) Phase**
+> **Note:** Like the minimal example above, this script requires **two separate GPUs** by default, one for the generative model (Generator, Evaluator, and optionally the generative Controller) and one for the reranker model (Controller action scoring).
 
-When the Module is called with an [**Example**](https://dspy.ai/learn/evaluation/data/#dspy-example-objects) (which contains values for input fields matching the Signature), the Adapter formats a prompt, the LM generates a response, and the Adapter parses it back into structured fields returned as a **Prediction**. See additional details about Adapters in the [Adapters documentation](https://dspy.ai/learn/programming/adapters/), more on Language Models in the [LM documentation](https://dspy.ai/learn/programming/language_models/), and about Modules in the [Modules documentation](https://dspy.ai/learn/programming/modules/).
+### **Key Flags**
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant Module as dspy.Module
-    participant Adapter
-    participant LM as Language Model
+| Flag | Description | Default |
+|:-----|:------------|:--------|
+| `--model` | Generative model name | `Qwen3-30B-A3B-Instruct-2507` |
+| `--reranker_model` | Reranker model for scoring | `Qwen3-Reranker-8B` |
+| `--model_directory` | Directory containing downloaded models | `/path/to/model_storage` |
+| `--generative_gpu_index` | GPU index for generative model | `0` |
+| `--reranker_gpu_index` | GPU index for reranker model | `1` |
 
-    User->>Module: Example(topic="AI", stance="PRO")
-    Module->>Adapter: Format prompt from Signature + inputs
-    Adapter->>LM: Formatted prompt string
-    LM->>Adapter: Raw LLM response
-    Adapter->>Module: Parsed & type-checked fields
-    Module->>User: Prediction(argument="...")
-```
+**Tree Search Parameters:**
+
+| Flag | Description | Default |
+|:-----|:------------|:--------|
+| `--depth` | Maximum depth of reasoning tree ($d$) | `2` |
+| `--n_samples_generation` | Branching factor / candidates per node ($n$) | `3` |
+| `--top_k` | Beam width ($k$) | `2` |
+| `--do_pruning` | Enable pruning low-scoring nodes | `False` |
+| `--use_self_consistency` | Enable self-consistency voting | `False` |
+| `--num_final_candidates` | Number of final outputs to return | `1` |
+| `--action_space_paths` | Paths to action space JSON files (one per dimension) | `None` |
+
+**Generation Parameters:**
+
+| Flag | Description | Default |
+|:-----|:------------|:--------|
+| `--generator_temperature` | Temperature for generation | `1.0` |
+| `--controller_temperature` | Temperature for generative controller | `1.2` |
+| `--judge_temperature` | Temperature for evaluator | `0.7` |
+| `--experiment_mode` | Final output method: `synthesis_strict`, `synthesis_faithful`, `synthesis_restructured`, or `conclusion` | `synthesis_faithful` |
+
+**Output & Logging:**
+
+| Flag | Description | Default |
+|:-----|:------------|:--------|
+| `--do_save_tree` | Save full tree structure to disk | `False` |
+| `--outputs_directory` | Directory for saved outputs | Current directory |
+| `--outputs_filename` | Filename for outputs (auto-timestamped if not set) | `None` |
+| `--verbosity` | Logging level: `debug`, `info`, `warning`, `error` | `info` |
 
 ---
 
@@ -184,7 +288,9 @@ Three modules implement the Plan &rarr; Generate &rarr; Evaluate &rarr; Select c
 
 #### **Controller**
 
-The Controller ($C$) observes the current state and selects actions from an action space $\mathcal{A}$. Each action is treated as a *tool call*: selecting an action corresponds to choosing a tool name and providing values for its arguments (if any). Executing the tool returns a `ReasoningIntervention`, a structured object containing an `internal_reasoning` string (guidance injected into context) and a `prefix` string (text pre-filled at the start of the next generation).
+The Controller ($C$) observes the current state and selects actions from an action space $\mathcal{A}$.
+Each action is treated as a *tool call*: selecting an action corresponds to choosing a tool name and providing values for its arguments (if any).
+Executing the tool returns a `ReasoningIntervention`, a structured object containing an `internal_reasoning` string (guidance injected into context) and a `prefix` string (text pre-filled at the start of the next generation).
 
 Two controller implementations exist:
 
@@ -236,7 +342,7 @@ flowchart TD
 | Field | Description | Example |
 |:------|:------------|:--------|
 | `tool` | The selected `dspy.Tool` | tool for `"select_reasoning_intervention"` or `"finish"` |
-| `chosen_values` | Tool arguments (if any) | `{"structures": "reasoning", "subtopics": "justice_and_fairness"}` |
+| `chosen_values` | Tool arguments (if any) | `{"structures": "causal_reasoning", "subtopics": "justice_and_fairness"}` |
 | `intervention` | `ReasoningIntervention` from executing the tool | `ReasoningIntervention(continue_reasoning=True, internal_reasoning="I should analyze whether...", prefix="Therefore")` |
 | `considerations` | Rationale for the choice | `"The argument needs causal structure..."` |
 | `intervention.continue_reasoning` | Whether to generate another reasoning step | `True` / `False` |
@@ -276,7 +382,7 @@ STATe's argument generation experiment uses three action-space dimensions:
   "name": "Structures",
   "definition": "Forces the next reasoning step to adhere to a specific discourse structure...",
   "choices": {
-    "reasoning": {
+    "causal_reasoning": {
       "definition": "States causes, effects, consequences, or logical implications.",
       "prefix": "Therefore"
     },
@@ -336,9 +442,12 @@ STATe's argument generation experiment uses three action-space dimensions:
 
 **How controllers use action spaces:**
 
-- The **generative controller** creates a *single combined tool* with one parameter per dimension. The LLM generates a choice for each parameter (e.g., `{"structures": "reasoning", "subtopics": "justice_and_fairness", "styles": "statistical_and_data_driven"}`). Executing the tool combines the `internal_reasoning` and `prefix` from all chosen values.
+- The **generative controller** creates a *single combined tool* with one parameter per dimension.
+The LLM generates a choice for each parameter (e.g., `{"structures": "causal_reasoning", "subtopics": "justice_and_fairness", "styles": "statistical_and_data_driven"}`).
+Executing the tool combines the `internal_reasoning` and `prefix` from all chosen values.
 
-- The **reranker controller** creates *one tool per combination* of choices across all dimensions (e.g., 4 structures &times; 2 subtopics &times; 2 styles = 16 tools). Each tool has a description derived from its choices, and the reranker scores all tools against the current state to select the top-$n$.
+- The **reranker controller** creates *one tool per combination* of choices across all dimensions (e.g., [10 structures](experiments/argument_generation/action_space/structures.json) &times; [10 subtopics](experiments/argument_generation/action_space/subtopics.json) &times; [10 styles](experiments/argument_generation/action_space/styles.json) = 1,000 tools). 
+Each tool has a description derived from its choices, and the reranker scores all tools against the current state to select the top-$n$.
 
 **Creating action spaces for your own tasks:**
 
@@ -537,7 +646,7 @@ We recognize natural "stopping points" in the model's response through XML tags 
 
 **3. Assistant Pre-filling**
 
-Injects controller interventions using vLLM's `continue_final_message`:
+Injects controller interventions using vLLM's `continue_final_message`. The adapter builds an assistant prefill that concatenates internal reasoning (context guidance) and a prefix (text that starts the model's generation). The model then continues from the prefix.
 
 ```mermaid
 sequenceDiagram
@@ -551,6 +660,12 @@ sequenceDiagram
     vLLM->>Adapter: Generated continuation
     Adapter->>Adapter: Parse reasoning step
 ```
+
+*Illustrative interventions for argument generation (in favor of a single-use plastics ban).* Templates in black, <span style="color:teal">internal reasoning</span> in teal, <span style="color:blue">prefixes</span> in blue, <span style="color:orange">model continuation</span> in orange, <span style="color:#E6A800">final answer</span> in amber. Each column shows the generation state at different stages: first step (single claim), intermediate (multiple claims), and final (complete reasoning with synthesized answer). The answer synthesizes the reasoning steps, often rephrasing the first claim to frame the broader argument.
+
+| **First step** | **Intermediate step** | **Final step** |
+|:---------------|:----------------------|:---------------|
+| <tt>&lt;thinking&gt;</tt><br><tt>&lt;step&gt;</tt><br><tt>## internal_reasoning</tt><br><span style="color:teal">I should identify risks, unintended outcomes, cascading effects, and potential for escalation.</span><br><tt>## claim</tt><br><span style="color:blue">If</span> <span style="color:orange">current levels of plastic waste continue, they will cause permanent harm to marine ecosystems...</span> | <tt>&lt;thinking&gt;</tt><br><tt>&lt;step&gt;</tt><br><tt>## internal_reasoning</tt><br><span style="color:teal">I should identify risks...</span><br><tt>## claim</tt><br><span style="color:blue">If</span> <span style="color:orange">current levels of plastic waste continue...</span><br><tt>&lt;/step&gt;</tt><br>...<br><tt>&lt;step&gt;</tt><br><tt>## internal_reasoning</tt><br><span style="color:teal">I should evaluate historical precedents, long-term vs short-term tradeoffs, and obligations to future generations.</span><br><tt>## claim</tt><br><span style="color:blue">For example,</span> <span style="color:orange">Canada's existing single-use plastic bans are expected to reduce total waste by 5%...</span> | <tt>&lt;thinking&gt;</tt><br><tt>&lt;step&gt;</tt><br><tt>## internal_reasoning</tt><br><span style="color:teal">I should identify risks...</span><br><tt>## claim</tt><br><span style="color:blue">If</span> <span style="color:orange">current levels of plastic waste continue...</span><br><tt>&lt;/step&gt;</tt><br>...<br><tt>&lt;step&gt;</tt><br><tt>## internal_reasoning</tt><br><span style="color:teal">I should evaluate...</span><br><tt>## claim</tt><br><span style="color:blue">For example,</span> <span style="color:orange">Canada's existing bans...</span><br><tt>&lt;/step&gt;</tt><br>...<br><tt>&lt;/thinking&gt;</tt><br><tt>&lt;answer&gt;</tt><br><tt>## argument</tt><br><span style="color:#E6A800">Given that plastic waste at current levels threatens permanent harm to marine ecosystems, a ban is both necessary and justified. Evidence from Canada shows that...</span> |
 
 **4. Heterogeneous Batching**
 
@@ -572,141 +687,6 @@ outputs = adapter(
 
 ---
 
-## **Installation**
-
-### **Prerequisites**
-
-- **Python 3.12+**
-- **GPUs:** Recommended setup is 2 GPUs (e.g., GPU 0 for Generation, GPU 1 for Reranking)
-
-### **Environment Setup**
-
-```bash
-# Create environment
-conda create -n dspy_reasoning_env python=3.12
-conda activate dspy_reasoning_env
-
-# Install dependencies
-pip install -r requirements_server.txt
-
-# Download models
-huggingface-cli download Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --local-dir /path/to/model_storage/Qwen3-30B-A3B-Instruct-2507
-```
-
----
-
-## **Quick Start**
-
-Here is a minimal example of running a Tree of Thoughts pipeline:
-
-```python
-from lm.generative_local_lm import GenerativeLocalVLLM
-from lm.scoring_local_lm import ScoringLocalVLLM
-from predict.tree_of_thoughts import TreeOfThoughts
-from signatures import ReasoningSignature, InputField, ReasoningField, OutputField
-
-# 1. Define Signatures
-class QuestionAnsweringWithReasoning(ReasoningSignature):
-    """Answer the question by reasoning step-by-step."""
-    question: str = InputField(desc="The question to answer")
-    reasoning_step: str = ReasoningField(desc="A step in the reasoning process")
-    answer: str = OutputField(desc="The final answer")
-
-class EvaluateAnswer(ReasoningSignature):
-    """Evaluate the quality of an answer."""
-    question: str = InputField(desc="The original question")
-    answer: str = InputField(desc="The answer to evaluate")
-    score: int = OutputField(desc="Quality score 1-10", ge=1, le=10)
-
-# 2. Initialize Models
-generative_lm = GenerativeLocalVLLM(model="Qwen/Qwen3-30B-A3B-Instruct-2507", task="generate")
-evaluator_lm = ScoringLocalVLLM(model="Qwen/Qwen3-Reranker-8B", task="score")
-
-# 3. Configure Tree of Thoughts
-tot = TreeOfThoughts(
-    generator_signature=QuestionAnsweringWithReasoning,
-    evaluator_signature=EvaluateAnswer,
-    generative_lm=generative_lm,
-    evaluator_lm=evaluator_lm,
-)
-
-# 4. Run Inference
-output = tot(
-    question="What are the long-term economic effects of AI?",
-    max_depth=3,
-    top_k=2
-)
-
-print(f"Final Answer: {output.answer}")
-```
-
----
-
-## **Usage: Running Experiments**
-
-The main entry point is `experiments/argument_generation/run_argument_generation.py`:
-
-```bash
-python experiments/argument_generation/run_argument_generation.py \
-    --experiment_mode synthesis_faithful \
-    --do_pruning \
-    --do_save_tree \
-    --outputs_directory ./experiments/argument_generation/tot_outputs \
-    --outputs_filename argument_generation_depth_3_bf_5_top_k_2 \
-    --depth 3 \
-    --generator_temperature 0.7 \
-    --n_samples_generation 5 \
-    --top_k 3 \
-    --n_samples_judge 5 \
-    --judge_temperature 0.7 \
-    --action_space_paths \
-      ./experiments/argument_generation/action_space/subtopics.json \
-      ./experiments/argument_generation/action_space/styles.json \
-      ./experiments/argument_generation/action_space/structures.json
-```
-
-> **Note:** This script requires **two separate GPUs** by default: one for the generative model (Generator, Evaluator, and optionally the generative Controller) and one for the reranker model (Controller action scoring).
-
-### **Key Flags**
-
-| Flag | Description | Default |
-|:-----|:------------|:--------|
-| `--model` | Generative model name | `Qwen3-30B-A3B-Instruct-2507` |
-| `--reranker_model` | Reranker model for scoring | `Qwen3-Reranker-8B` |
-| `--model_directory` | Directory containing downloaded models | `./models` |
-| `--generative_gpu_index` | GPU index for generative model | `0` |
-| `--reranker_gpu_index` | GPU index for reranker model | `1` |
-
-**Tree Search Parameters:**
-
-| Flag | Description | Default |
-|:-----|:------------|:--------|
-| `--depth` | Maximum depth of reasoning tree ($d$) | `2` |
-| `--n_samples_generation` | Branching factor / candidates per node ($n$) | `3` |
-| `--top_k` | Beam width ($k$) | `2` |
-| `--do_pruning` | Enable pruning low-scoring nodes | `False` |
-| `--use_self_consistency` | Enable self-consistency voting | `False` |
-| `--num_final_candidates` | Number of final outputs to return | `1` |
-| `--action_space_paths` | Paths to action space JSON files (one per dimension) | `None` |
-
-**Generation Parameters:**
-
-| Flag | Description | Default |
-|:-----|:------------|:--------|
-| `--generator_temperature` | Temperature for generation | `1.0` |
-| `--controller_temperature` | Temperature for generative controller | `1.2` |
-| `--judge_temperature` | Temperature for evaluator | `0.7` |
-| `--experiment_mode` | Final output method: `synthesis_strict`, `synthesis_faithful`, `synthesis_restructured`, or `conclusion` | `synthesis_faithful` |
-
-**Output & Logging:**
-
-| Flag | Description | Default |
-|:-----|:------------|:--------|
-| `--do_save_tree` | Save full tree structure to disk | `False` |
-| `--outputs_directory` | Directory for saved outputs | Current directory |
-| `--outputs_filename` | Filename for outputs (auto-timestamped if not set) | `None` |
-| `--verbosity` | Logging level: `debug`, `info`, `warning`, `error` | `info` |
 
 ---
 
@@ -719,9 +699,6 @@ The test suite includes both **mock-based unit tests** (fast, no GPU required) a
 Unit tests use `MockLocalVLLM` from `utilities_for_tests.py` to simulate model responses without requiring actual GPU resources:
 
 ```bash
-# Run all unit tests (from the root directory)
-pytest .
-
 # Individual components
 pytest lm/test_generative_local_lm.py                       # Generative LLM (vLLM)
 pytest lm/test_scoring_local_lm.py                          # Scoring/reranker LLM (vLLM)
@@ -744,6 +721,11 @@ pytest predict/tree_of_thoughts/test_tree_of_thoughts.py    # Tree of Thoughts (
 pytest tree/test_tree.py                                    # Tree data structures
 pytest test_misc_utils.py                                   # Miscellaneous utilities
 pytest test_utilities_for_tests.py                          # Test utilities (MockLocalVLLM)
+```
+
+To run all unit tests (from the root directory):
+```bash
+pytest .
 ```
 
 ### **Integration Tests**
