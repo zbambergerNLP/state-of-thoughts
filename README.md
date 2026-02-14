@@ -26,6 +26,15 @@ Built on [DSPy](https://github.com/stanfordnlp/dspy) and [vLLM](https://github.c
 - **Python 3.12+**
 - **GPUs:** Recommended setup is 2 GPUs (e.g., GPU 0 for Generation, GPU 1 for Reranking)
 
+### **Clone the repository**
+
+If you are setting up on a remote server with GPU access, clone the repository first:
+
+```bash
+git clone https://github.com/zbambergerNLP/state-of-thoughts.git
+cd state-of-thoughts
+```
+
 ### **Environment Setup**
 
 Choose one of the following options to create a Python 3.12+ environment.
@@ -35,15 +44,15 @@ Choose one of the following options to create a Python 3.12+ environment.
 ```bash
 python3.12 -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
+pip install --upgrade pip
 pip install -r requirements_server.txt
 ```
 
 #### **(2) Conda**
 
 ```bash
-conda create -n dspy_reasoning_env python=3.12
-conda activate dspy_reasoning_env
+conda create -n state-of-thoughts python=3.12
+conda activate state-of-thoughts
 
 pip install -r requirements_server.txt
 ```
@@ -160,6 +169,8 @@ python experiments/argument_generation/generate_arguments.py \
     --top_k 3 \
     --n_samples_judge 1 \
     --generator_temperature 0.7 \
+    --judge_temperature 0.7 \
+    --do_pruning \
     --experiment_mode synthesis_faithful \
     --outputs_directory ./experiments/argument_generation/outputs \
     --outputs_filename arguments \
@@ -693,17 +704,24 @@ Develop locally and run unit tests on your machine.
 For integration tests and experiments (which require GPUs), sync the project to a GPU server and run them there:
 
 ```bash
-REMOTE_HOST=user@host.example.edu REMOTE_PATH=/home/user/state_of_thoughts/ ./scripts/sync_to_remote.sh
+REMOTE_HOST=user@host.example.edu REMOTE_PATH=/remote/path/to/state-of-thoughts/ ./scripts/sync_to_remote.sh
+```
+
+Sync only a subdirectory (e.g. `experiments/`). `REMOTE_PATH` must be the matching directory on the server:
+
+```bash
+REMOTE_HOST=user@host.example.edu REMOTE_PATH=/remote/path/to/state-of-thoughts/experiments SOURCE_PATH=experiments ./scripts/sync_to_remote.sh
 ```
 
 With password authentication (requires `sshpass`):
 
 ```bash
-REMOTE_HOST=user@host.example.edu REMOTE_PATH=/home/user/state_of_thoughts/ REMOTE_PASSWORD=secret ./scripts/sync_to_remote.sh
+REMOTE_HOST=user@host.example.edu REMOTE_PATH=/home/user/state-of-thoughts/ REMOTE_PASSWORD=secret ./scripts/sync_to_remote.sh
 ```
 
-Run this script from the project root.
-After syncing, SSH into the server, (create and) activate your virtual environment, and run `pytest .` to execute integration tests against real models (see **Testing** below).
+Run the sync script from the project's (local) root to sync the project to the server.
+Once synced, SSH into the server, activate a virtual environment (see **Environment Setup** above).
+You can thenrun either integration tests (via `pytest` as described below) or experiments (e.g., via `python experiments/argument_generation/generate_arguments.py`).
 
 ---
 

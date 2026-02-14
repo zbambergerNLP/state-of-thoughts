@@ -7,6 +7,7 @@ from predict.controller.controller_constants import ControllerOutput
 from tree import (
 	Edge,
 	Node,
+	ReasoningChain,
 	State,
 	Tree,
 )
@@ -202,6 +203,117 @@ Step 2
 	def test_model_output_so_far(self, state: State, expected: str) -> None:
 		"""Ensure model_output_so_far() deterministically reconstructs assistant output."""
 		assert state.model_output_so_far() == expected
+
+
+class TestReasoningChainControllerTrajectory:
+	"""Tests for ReasoningChain.controller_trajectory()."""
+
+	@pytest.mark.parametrize(
+		[
+			"nodes",
+			"expected_trajectory",
+		],
+		[
+			pytest.param(
+				[],
+				[],
+				id="empty_nodes_returns_empty_list",
+			),
+			pytest.param(
+				[
+					Node(
+						index=0,
+						layer=0,
+						state=State(
+							input={"topic": "Test"},
+							controller_output_trajectory=[],
+						),
+					),
+				],
+				[],
+				id="root_only_no_controller_outputs",
+			),
+			pytest.param(
+				[
+					Node(
+						index=0,
+						layer=0,
+						state=State(input={"topic": "Test"}),
+					),
+					Node(
+						index=1,
+						layer=1,
+						parent_id=0,
+						state=State(
+							input={"topic": "Test"},
+							controller_output_trajectory=[
+								ControllerOutput(
+									action="Causal Structures:causal_reasoning",
+									action_arguments={"structure": "Causal Structures", "subtopic": "causal_reasoning"},
+									tool_descriptions="",
+									continue_reasoning=True,
+								),
+							],
+							reasoning=[{"claim": "First claim"}],
+						),
+					),
+				],
+				[
+					(
+						"Causal Structures:causal_reasoning",
+						{"structure": "Causal Structures", "subtopic": "causal_reasoning"},
+					),
+				],
+				id="single_step_with_action_arguments",
+			),
+			pytest.param(
+				[
+					Node(
+						index=0,
+						layer=0,
+						state=State(input={"topic": "Test"}),
+					),
+					Node(
+						index=1,
+						layer=1,
+						parent_id=0,
+						state=State(
+							input={"topic": "Test"},
+							controller_output_trajectory=[
+								ControllerOutput(
+									action="step1",
+									action_arguments={"a": 1},
+									tool_descriptions="",
+									continue_reasoning=True,
+								),
+								ControllerOutput(
+									action="step2",
+									action_arguments={"b": "x"},
+									tool_descriptions="",
+									continue_reasoning=False,
+								),
+							],
+							reasoning=[{"claim": "1"}, {"claim": "2"}],
+							output={"argument": "Final"},
+						),
+					),
+				],
+				[
+					("step1", {"a": 1}),
+					("step2", {"b": "x"}),
+				],
+				id="multi_step_trajectory",
+			),
+		],
+	)
+	def test_controller_trajectory(
+		self,
+		nodes: list[Node],
+		expected_trajectory: list[tuple[str, dict[str, Any]]],
+	) -> None:
+		"""Verify controller_trajectory returns tool names and arguments per step."""
+		chain = ReasoningChain.from_node_path(nodes)
+		assert chain.controller_trajectory() == expected_trajectory
 
 
 @pytest.mark.parametrize(

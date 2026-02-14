@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 # Sync project to a remote server via rsync.
 #
-# Set REMOTE_HOST and REMOTE_PATH. Optionally set REMOTE_PASSWORD for SSH password
-# authentication (requires sshpass). Without REMOTE_PASSWORD, uses SSH keys.
-# Must be invoked from the project root.
+# Required: REMOTE_HOST, REMOTE_PATH
+# Optional: SOURCE_PATH (default: project root), REMOTE_PASSWORD (for sshpass)
 #
 # Usage:
-#   REMOTE_HOST=user@host.example.edu REMOTE_PATH=/home/user/project/ ./scripts/sync_to_remote.sh
+#   REMOTE_HOST=user@host.example.edu REMOTE_PATH=/remote/path/to/state-of-thoughts/ ./scripts/sync_to_remote.sh
 #
 # With password:
-#   REMOTE_HOST=user@host.example.edu REMOTE_PATH=/home/user/project/ REMOTE_PASSWORD=secret ./scripts/sync_to_remote.sh
+#   REMOTE_HOST=user@host.example.edu REMOTE_PATH=/remote/path/to/state-of-thoughts/ REMOTE_PASSWORD=secret ./scripts/sync_to_remote.sh
+# 
+# Sync specific subdirectory (REMOTE_PATH must be the matching directory on the server):
+#   REMOTE_HOST=user@host.example.edu REMOTE_PATH=/remote/path/to/state-of-thoughts/experiments SOURCE_PATH=experiments ./scripts/sync_to_remote.sh
 
 set -e
 
@@ -22,9 +24,24 @@ if [[ -z "${REMOTE_HOST:-}" ]]; then
 fi
 
 if [[ -z "${REMOTE_PATH:-}" ]]; then
-  echo "Error: REMOTE_PATH is not set (e.g., /home/user/project/)" >&2
+  echo "Error: REMOTE_PATH is not set (e.g., /home/user/state-of-thoughts/)" >&2
   exit 1
 fi
+
+# Source path: use SOURCE_PATH if set, else project root
+SOURCE_PATH="${SOURCE_PATH:-${PROJECT_ROOT}}"
+if [[ "${SOURCE_PATH}" != /* ]]; then
+  SOURCE_PATH="${PROJECT_ROOT}/${SOURCE_PATH}"
+fi
+if [[ ! -d "${SOURCE_PATH}" ]]; then
+  echo "Error: SOURCE_PATH is not a directory: ${SOURCE_PATH}" >&2
+  exit 1
+fi
+SOURCE_PATH="$(cd "${SOURCE_PATH}" && pwd)"
+
+# Ensure trailing slashes so rsync copies contents into the remote path (not nested dirs)
+SOURCE_PATH="${SOURCE_PATH}/"
+REMOTE_PATH="${REMOTE_PATH%/}/"
 
 if [[ -n "${REMOTE_PASSWORD:-}" ]]; then
   if ! command -v sshpass &>/dev/null; then
@@ -36,10 +53,8 @@ else
   RSYNC_CMD=(rsync)
 fi
 
-cd "${PROJECT_ROOT}"
-
-if [[ ! -f "README.md" ]] || [[ ! -f "pyproject.toml" ]]; then
-  echo "Error: Must run from project root (README.md and pyproject.toml not found)" >&2
+if [[ "${SOURCE_PATH}" == "${PROJECT_ROOT}/" ]] && { [[ ! -f "${PROJECT_ROOT}/README.md" ]] || [[ ! -f "${PROJECT_ROOT}/pyproject.toml" ]]; }; then
+  echo "Error: Source appears to be project root but README.md and pyproject.toml not found" >&2
   exit 1
 fi
 
@@ -57,6 +72,6 @@ fi
   --exclude='paper/' \
   --exclude='experiments/results' \
   --exclude='.idea/' \
-  ./ "${REMOTE_HOST}:${REMOTE_PATH}"
+  "${SOURCE_PATH}" "${REMOTE_HOST}:${REMOTE_PATH}"
 
-echo "✓ Synced to ${REMOTE_HOST}:${REMOTE_PATH}"
+echo "✓ Synced from ${SOURCE_PATH%/} to ${REMOTE_HOST}:${REMOTE_PATH}"
