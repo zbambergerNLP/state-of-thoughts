@@ -345,6 +345,24 @@ class ReasoningChain(BaseModel):
 		"""Create a ReasoningChain from a list of nodes."""
 		return cls(nodes=nodes)
 
+	def controller_trajectory(self) -> list[tuple[str, dict[str, Any]]]:
+		"""Controller tool names and arguments per reasoning step.
+
+		Walks the root-to-leaf path and collects the controller output that led to
+		each node (excluding the root). Each node's state.controller_output_trajectory
+		holds the outputs along the path to that node.
+
+		Returns:
+			List of (tool_name, action_arguments) for each step along the path.
+		"""
+		result: list[tuple[str, dict[str, Any]]] = []
+		for node in self.nodes[1:]:  # skip root
+			trajectory = node.state.controller_output_trajectory
+			if trajectory:
+				co = trajectory[-1]
+				result.append((co.action, dict(co.action_arguments)))
+		return result
+
 	def __str__(self) -> str:
 		"""Return a string representation of the reasoning chain.
 

@@ -8,7 +8,7 @@ without persona conditioning.
 Key features:
 - Takes --topic and --stance as CLI arguments
 - Uses SYNTHESIS_RESTRUCTURED for coherent argument reorganization
-- 100-tool action space (10 structures × 10 subtopics)
+- 100-tool action space (10 structures x 10 subtopics)
 - Individual CSV per job for robustness
 - Fixed seed for consistency across runs
 
@@ -39,6 +39,7 @@ python experiments/argument_generation/generate_arguments.py \
 """
 
 import csv
+import json
 import logging
 import os
 import time
@@ -58,6 +59,7 @@ from predict.tree_of_thoughts.tree_parameters import TreeOfThoughtsParameters
 from signatures.example_signatures import (
 	GenerateArgumentWithReasoning,  # Note: No persona variant
 )
+from tree import ReasoningChain
 
 load_dotenv()
 
@@ -101,9 +103,7 @@ def initialize_models(args):
 	"""Initialize two vLLM language models on separate GPUs."""
 	# Model configuration
 	generative_model_name = args.model
-	generative_full_model_path = os.path.join(
-		args.model_directory, generative_model_name
-	)
+	generative_full_model_path = os.path.join(args.model_directory, generative_model_name)
 	reranker_model_name = args.reranker_model
 	reranker_full_model_path = os.path.join(args.model_directory, reranker_model_name)
 
@@ -283,7 +283,7 @@ def run_generation(args):
 			f"{args.outputs_filename}_{topic_slug.lower()}_{args.stance.lower()}.json"
 		)
 
-		tot_output = tot.forward(
+		tot_output: TreeOfThoughtsOutput = tot(
 			state=input_data,
 			tot_parameters=tot_parameters,
 			do_save_tree=args.do_save_tree,
@@ -310,6 +310,15 @@ def run_generation(args):
 			f"Completed Topic: '{args.topic}', Stance: '{args.stance}'. "
 			f"Exported {num_leaf_nodes} complete arguments (leaf nodes) to CSV."
 		)
+
+		logger.info(f"Total runtime: {tot_output.runtime} seconds")
+		for response_index in range(len(tot_output.responses)):
+			logger.info("=" * 80)
+			logger.info(f"Response {response_index + 1}: {tot_output.response_strings[response_index]}")
+			reasoning_steps: ReasoningChain = tot_output.reasoning_steps[response_index]
+			trajectory = reasoning_steps.controller_trajectory()
+			for step_idx, (tool_name, args) in enumerate(trajectory, start=1):
+				logger.info(f"\tStep {step_idx} tool={tool_name} args={args}")
 
 	finally:
 		try:
@@ -369,6 +378,7 @@ def export_trajectory_to_csv(
 			[
 				f"step_{step}_reasoning",
 				f"step_{step}_action",
+				f"step_{step}_action_arguments",
 				f"step_{step}_structure",
 				f"step_{step}_subtopic",
 				f"step_{step}_style",
@@ -444,6 +454,9 @@ def export_trajectory_to_csv(
 				row[f"step_{step_idx}_subtopic"] = ""
 
 			row[f"step_{step_idx}_action"] = action_str
+			row[f"step_{step_idx}_action_arguments"] = json.dumps(
+				controller_output.action_arguments, sort_keys=True
+			)
 			row[f"step_{step_idx}_style"] = ""  # Not used in this experiment
 
 			# Controller guidance
@@ -459,6 +472,7 @@ def export_trajectory_to_csv(
 		):
 			row[f"step_{step_idx}_reasoning"] = ""
 			row[f"step_{step_idx}_action"] = ""
+			row[f"step_{step_idx}_action_arguments"] = ""
 			row[f"step_{step_idx}_structure"] = ""
 			row[f"step_{step_idx}_subtopic"] = ""
 			row[f"step_{step_idx}_style"] = ""
