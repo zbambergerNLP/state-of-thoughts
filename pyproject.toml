@@ -4,10 +4,35 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "state-of-thoughts"
-version = "0.1.0"
+version = "0.1.1"
 description = "Tree of Thoughts with structured action templates (built on DSPy and vLLM)"
 readme = "README.md"
 requires-python = ">=3.12"
+license = "LicenseRef-PrincetonAcademicResearch"
+license-files = ["LICENSE*"]
+authors = [
+	{ name = "Zachary E. Bamberger", email = "zachary@campus.technion.ac.il" },
+	{ name = "Till R. Saenger", email = "saenger@princeton.edu" },
+	{ name = "Gilad Morad", email = "gilad.mo12@gmail.com" },
+	{ name = "Ofra Amir", email = "oamir@technion.ac.il" },
+	{ name = "Brandon M. Stewart", email = "bms4@princeton.edu" },
+	{ name = "Amir Feder", email = "afeder@cs.huji.ac.il" },
+]
+maintainers = [
+	{ name = "Zachary E. Bamberger", email = "zachary@campus.technion.ac.il" },
+	{ name = "Till R. Saenger", email = "saenger@princeton.edu" },
+	{ name = "Gilad Morad", email = "gilad.mo12@gmail.com" },
+]
+classifiers = [
+	"Development Status :: 4 - Beta",
+	"Intended Audience :: Developers",
+	"Intended Audience :: Science/Research",
+	"Programming Language :: Python :: 3",
+	"Programming Language :: Python :: 3.12",
+	"Operating System :: OS Independent",
+	"Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+keywords = ["llm", "reasoning", "tree-of-thoughts", "dspy", "vllm"]
 dependencies = [
 	"dspy",
 	"torch",
@@ -22,8 +47,13 @@ dependencies = [
 	"mypy",
 	"absl-py",
 	"matplotlib",
-    "vllm",
+	"vllm",
 ]
+
+[project.urls]
+Homepage = "https://github.com/zbambergerNLP/state-of-thoughts"
+Issues = "https://github.com/zbambergerNLP/state-of-thoughts/issues"
+Documentation = "https://github.com/zbambergerNLP/state-of-thoughts#readme"
 # vllm is installed via `make sync` or `pip install vllm` (works best on Linux+CUDA)
 
 
