@@ -721,7 +721,7 @@ REMOTE_HOST=user@host.example.edu REMOTE_PATH=/home/user/state-of-thoughts/ REMO
 
 Run the sync script from the project's (local) root to sync the project to the server.
 Once synced, SSH into the server, activate a virtual environment (see **Environment Setup** above).
-You can thenrun either integration tests (via `pytest` as described below) or experiments (e.g., via `python experiments/argument_generation/generate_arguments.py`).
+You can then run either integration tests (via `pytest` as described below) or experiments (e.g., via `python experiments/argument_generation/generate_arguments.py`).
 
 ---
 
