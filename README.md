@@ -766,3 +766,21 @@ pytest .
 ### **Integration Tests**
 
 Integration tests require access to GPUs and run against real models. They are skipped automatically on systems without GPUs. To run them, sync the project to a GPU server (see **Local Development** above), SSH in, activate your environment, then run the same `pytest` commands. The same tests that run as unit tests locally will run as integration tests on the server when CUDA is available.
+
+## Citation
+
+If you use STATe-of-Thoughts in your research, please cite our paper:
+
+**STATe-of-Thoughts: Structured Action Templates for Tree-of-Thoughts**\
+Zachary Bamberger\*, Till R. Saenger\*, Gilad Morad, Ofra Amir, Brandon M. Stewart, Amir Feder
+(\* equal contribution)
+
+[[Preprint]](https://arxiv.org/abs/2602.14265)
+```bibtex
+@article{bamberger2026state,
+  title={STATe-of-Thoughts: Structured Action Templates for Tree-of-Thoughts},
+  author={Bamberger, Zachary and Saenger, Till R. and Morad, Gilad and Amir, Ofra and Stewart, Brandon M. and Feder, Amir},
+  journal={arXiv preprint arXiv:2602.14265},
+  year={2026}
+}
+```
