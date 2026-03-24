@@ -67,9 +67,9 @@ logger = logging.getLogger(__name__)
 
 # Synthesis type color scheme (matching m1_vs_m2_analysis.py)
 SYNTHESIS_COLORS = {
-	"strict": "#e74c3c",  # Red
+	"strict": "#3498db",  # Blue
 	"faithful": "#2ecc71",  # Green
-	"restructured": "#3498db",  # Blue
+	"restructured": "#e74c3c",  # Red
 }
 
 SYNTHESIS_LABELS = {
@@ -80,7 +80,7 @@ SYNTHESIS_LABELS = {
 
 # Output directory for figures
 SCRIPT_DIR = Path(__file__).parent.resolve()
-FIGURES_DIR = SCRIPT_DIR / "figures"
+FIGURES_DIR = SCRIPT_DIR / "figures" / "targeted_generation"
 
 FORCED_COLOR = "#FF9800"  # Orange for targeted arguments (consistent across types)
 
@@ -217,18 +217,19 @@ def match_pairs_by_length(
 	return matched_baseline, matched_targeted, matches_df
 
 
-def load_top_originals(synthesis_type: str, top_n: int) -> pd.DataFrame:
+def load_top_originals(synthesis_type: str, top_n: int, topic: str) -> pd.DataFrame:
 	"""Load top-N original arguments by BT score.
 
 	Args:
 		synthesis_type: One of strict, faithful, restructured.
 		top_n: Number of top arguments to include.
+		topic: Topic subdirectory name (e.g. single_use_plastic).
 
 	Returns:
 		DataFrame with columns including final_argument, bt_score, source.
 	"""
 	base_dir = Path(
-		f"experiments/argument_generation/argument_data/synthesis_{synthesis_type}"
+		f"experiments/argument_generation/argument_data/{topic}/synthesis_{synthesis_type}"
 	)
 	bt_path = base_dir / "pairwise_comparisons_bt_scores.csv"
 	df = pd.read_csv(bt_path)
@@ -238,26 +239,29 @@ def load_top_originals(synthesis_type: str, top_n: int) -> pd.DataFrame:
 	return df
 
 
-def load_targeted_arguments(synthesis_type: str) -> pd.DataFrame:
+def load_targeted_arguments(synthesis_type: str, topic: str) -> pd.DataFrame:
 	"""Load targeted (M2-optimized) forced trajectory arguments.
 
 	Tries multiple filename patterns for backwards compatibility.
 
 	Args:
 		synthesis_type: One of strict, faithful, restructured.
+		topic: Topic subdirectory name (e.g. single_use_plastic).
 
 	Returns:
 		DataFrame with final_argument and source columns.
 	"""
 	base_dir = Path(
-		f"experiments/argument_generation/argument_data/synthesis_{synthesis_type}"
+		f"experiments/argument_generation/argument_data/{topic}/synthesis_{synthesis_type}"
 	)
+	gen_dir = base_dir / "targeted_generation"
 
 	# Try different filename patterns (in order of preference)
 	candidates = [
-		# New naming convention
+		# Current naming convention (targeted_generation subdirectory)
+		gen_dir / f"targeted_forced_results_{synthesis_type}.csv",
+		# Legacy naming conventions (flat directory)
 		base_dir / f"targeted_forced_results_{synthesis_type}.csv",
-		# Legacy naming conventions
 		base_dir / f"forced_trajectory_forced_results_{synthesis_type}.csv",
 		base_dir / f"None_forced_results_{synthesis_type}.csv",
 	]
@@ -273,7 +277,7 @@ def load_targeted_arguments(synthesis_type: str) -> pd.DataFrame:
 			return df
 
 	raise FileNotFoundError(
-		f"No targeted results CSV found for synthesis type '{synthesis_type}' in {base_dir}. "
+		f"No targeted results CSV found for synthesis type '{synthesis_type}' in {gen_dir}. "
 		f"Run ablation_trajectory_selection.py with --selection_mode targeted"
 	)
 
@@ -282,6 +286,7 @@ def load_baseline_arguments(
 	synthesis_type: str,
 	baseline_type: str,
 	top_n_originals: int = 250,
+	topic: str = "single_use_plastic",
 ) -> pd.DataFrame:
 	"""Load baseline arguments for comparison.
 
@@ -289,6 +294,7 @@ def load_baseline_arguments(
 		synthesis_type: One of strict, faithful, restructured.
 		baseline_type: One of original, random, m1b.
 		top_n_originals: Number of top originals to include (only for original).
+		topic: Topic subdirectory name (e.g. single_use_plastic).
 
 	Returns:
 		DataFrame with final_argument and source="baseline" columns.
@@ -297,24 +303,29 @@ def load_baseline_arguments(
 		FileNotFoundError: If baseline results CSV not found.
 	"""
 	base_dir = Path(
-		f"experiments/argument_generation/argument_data/synthesis_{synthesis_type}"
+		f"experiments/argument_generation/argument_data/{topic}/synthesis_{synthesis_type}"
 	)
 
 	if baseline_type == "original":
 		# Load top-N original arguments by BT score
-		df = load_top_originals(synthesis_type, top_n_originals)
+		df = load_top_originals(synthesis_type, top_n_originals, topic)
 		df["source"] = "baseline"
 		return df
 
 	# For random and m1b, load from forced results
-	path = base_dir / f"{baseline_type}_forced_results_{synthesis_type}.csv"
+	gen_dir = base_dir / "targeted_generation"
+	path = gen_dir / f"{baseline_type}_forced_results_{synthesis_type}.csv"
 
-	# Fallback to old naming convention for backwards compatibility
+	# Fallback to old naming conventions for backwards compatibility
 	if not path.exists():
-		old_path = base_dir / f"ablation_{baseline_type}_forced_results_{synthesis_type}.csv"
-		if old_path.exists():
-			path = old_path
-			logger.info("Using legacy file path: %s", old_path)
+		for fallback in [
+			base_dir / f"{baseline_type}_forced_results_{synthesis_type}.csv",
+			base_dir / f"ablation_{baseline_type}_forced_results_{synthesis_type}.csv",
+		]:
+			if fallback.exists():
+				path = fallback
+				logger.info("Using legacy file path: %s", fallback)
+				break
 
 	if not path.exists():
 		raise FileNotFoundError(
@@ -398,6 +409,7 @@ def print_summary(df: pd.DataFrame, baseline_type: str) -> None:
 def load_results_for_type(
 	synthesis_type: str,
 	baseline_type: str,
+	topic: str = "single_use_plastic",
 ) -> pd.DataFrame | None:
 	"""Load baseline vs targeted BT scores CSV for a synthesis type.
 
@@ -409,23 +421,29 @@ def load_results_for_type(
 	Args:
 		synthesis_type: One of strict, faithful, restructured.
 		baseline_type: One of original, random, m1b.
+		topic: Topic subdirectory name (e.g. single_use_plastic).
 
 	Returns:
 		DataFrame with bt_score and source columns (normalized to
 		"targeted"/"baseline"), or None if not found.
 	"""
 	base_dir = Path(
-		f"experiments/argument_generation/argument_data/synthesis_{synthesis_type}"
+		f"experiments/argument_generation/argument_data/{topic}/synthesis_{synthesis_type}"
 	)
+	gen_dir = base_dir / "targeted_generation"
 
 	if baseline_type == "original":
-		path = base_dir / "targeted_vs_original_bt_scores.csv"
+		path = gen_dir / "targeted_vs_original_bt_scores.csv"
 		# Fallback to legacy naming
+		if not path.exists():
+			path = base_dir / "targeted_vs_original_bt_scores.csv"
 		if not path.exists():
 			path = base_dir / "forced_vs_original_bt_scores.csv"
 	else:
-		path = base_dir / f"targeted_vs_{baseline_type}_bt_scores.csv"
+		path = gen_dir / f"targeted_vs_{baseline_type}_bt_scores.csv"
 		# Fallback to legacy naming
+		if not path.exists():
+			path = base_dir / f"targeted_vs_{baseline_type}_bt_scores.csv"
 		if not path.exists():
 			path = base_dir / f"ablation_{baseline_type}_vs_targeted_bt_scores.csv"
 
@@ -452,11 +470,15 @@ def load_results_for_type(
 	if n_missing > len(df) * 0.1:  # More than 10% missing
 		# Find corresponding JSONL file
 		if baseline_type == "original":
-			jsonl_path = base_dir / "targeted_vs_original_comparisons.jsonl"
+			jsonl_path = gen_dir / "targeted_vs_original_comparisons.jsonl"
+			if not jsonl_path.exists():
+				jsonl_path = base_dir / "targeted_vs_original_comparisons.jsonl"
 			if not jsonl_path.exists():
 				jsonl_path = base_dir / "forced_vs_original_comparisons.jsonl"
 		else:
-			jsonl_path = base_dir / f"targeted_vs_{baseline_type}_comparisons.jsonl"
+			jsonl_path = gen_dir / f"targeted_vs_{baseline_type}_comparisons.jsonl"
+			if not jsonl_path.exists():
+				jsonl_path = base_dir / f"targeted_vs_{baseline_type}_comparisons.jsonl"
 			if not jsonl_path.exists():
 				jsonl_path = base_dir / f"ablation_{baseline_type}_vs_targeted_comparisons.jsonl"
 
@@ -486,6 +508,7 @@ def load_pre_match_data_for_type(
 	synthesis_type: str,
 	baseline_type: str,
 	top_n_originals: int = 250,
+	topic: str = "single_use_plastic",
 ) -> tuple[pd.DataFrame, pd.DataFrame] | None:
 	"""Load pre-match baseline and targeted data for a synthesis type.
 
@@ -493,13 +516,14 @@ def load_pre_match_data_for_type(
 		synthesis_type: One of strict, faithful, restructured.
 		baseline_type: One of original, random, m1b.
 		top_n_originals: Number of top originals to use (for original baseline).
+		topic: Topic subdirectory name (e.g. single_use_plastic).
 
 	Returns:
 		Tuple of (baseline, targeted) DataFrames, or None if not found.
 	"""
 	try:
-		targeted = load_targeted_arguments(synthesis_type)
-		baseline = load_baseline_arguments(synthesis_type, baseline_type, top_n_originals)
+		targeted = load_targeted_arguments(synthesis_type, topic)
+		baseline = load_baseline_arguments(synthesis_type, baseline_type, top_n_originals, topic)
 		return baseline, targeted
 	except FileNotFoundError as e:
 		logger.warning(
@@ -513,6 +537,7 @@ def load_pre_match_data_for_type(
 
 def create_unified_histogram_for_synthesis(
 	synthesis_type: str,
+	topic: str = "single_use_plastic",
 ) -> None:
 	"""Create 3x2 histogram figure for one synthesis type.
 
@@ -521,15 +546,16 @@ def create_unified_histogram_for_synthesis(
 	- Right: Matched pairs
 
 	Uses synthesis-type-specific colors:
-	- Strict: red tones
+	- Strict: blue tones
 	- Faithful: green tones
-	- Restructured: blue tones
+	- Restructured: red tones
 
 	Args:
 		synthesis_type: One of strict, faithful, restructured.
+		topic: Topic subdirectory name (e.g. single_use_plastic).
 	"""
 	base_dir = Path(
-		f"experiments/argument_generation/argument_data/synthesis_{synthesis_type}"
+		f"experiments/argument_generation/argument_data/{topic}/synthesis_{synthesis_type}"
 	)
 	synthesis_label = SYNTHESIS_LABELS[synthesis_type]
 
@@ -553,7 +579,7 @@ def create_unified_histogram_for_synthesis(
 	# Order: random -> m1b -> original (matches summary table)
 	baseline_order = ["random", "m1b", "original"]
 	for row, baseline_type in enumerate(baseline_order):
-		df = load_results_for_type(synthesis_type, baseline_type)
+		df = load_results_for_type(synthesis_type, baseline_type, topic)
 		base_label = BASELINE_LABELS[baseline_type]
 
 		if df is None:
@@ -574,7 +600,7 @@ def create_unified_histogram_for_synthesis(
 		targeted_matched = df[df["source"] == "targeted"]
 
 		# Try to load pre-match data for left panel
-		pre_match_data = load_pre_match_data_for_type(synthesis_type, baseline_type)
+		pre_match_data = load_pre_match_data_for_type(synthesis_type, baseline_type, topic=topic)
 
 		# Left panel: all arguments (pre-match)
 		ax = axes[row, 0]
@@ -664,24 +690,34 @@ def create_unified_histogram_for_synthesis(
 	logger.info("Saved unified histogram to %s", output_path)
 
 
-def create_all_unified_histograms() -> None:
+def create_all_unified_histograms(topic: str = "single_use_plastic") -> None:
 	"""Create unified histograms for each synthesis type.
 
 	Generates one figure per synthesis type in figures/:
 	- length_histograms_unified_strict.pdf
 	- length_histograms_unified_faithful.pdf
 	- length_histograms_unified_restructured.pdf
+
+	Args:
+		topic: Topic subdirectory name (e.g. single_use_plastic).
 	"""
 	for synthesis_type in SYNTHESIS_TYPES:
-		create_unified_histogram_for_synthesis(synthesis_type)
+		create_unified_histogram_for_synthesis(synthesis_type, topic)
 
 
-def generate_latex_table(df: pd.DataFrame, rows_per_section: int = 3) -> str:
+def generate_latex_table(
+	df: pd.DataFrame,
+	rows_per_section: int = 3,
+	label: str = "tab:ablation_trajectory_eval",
+	caption: str = "Ablation Study: Targeted vs.\\ All Baselines. $N$ is the total number of length-matched argument pairs (balanced: $N/2$ targeted, $N/2$ baseline).",
+) -> str:
 	"""Generate a LaTeX table from the summary DataFrame.
 
 	Args:
 		df: Summary DataFrame with ablation evaluation results.
 		rows_per_section: Number of rows per section (for midrule insertion).
+		label: LaTeX label for the table.
+		caption: LaTeX caption for the table.
 
 	Returns:
 		LaTeX table string.
@@ -703,8 +739,8 @@ def generate_latex_table(df: pd.DataFrame, rows_per_section: int = 3) -> str:
 	lines = [
 		"\\begin{table}[htbp]",
 		"\\centering",
-		"\\caption{Ablation Study: Targeted vs.\\ All Baselines. $N$ is the total number of length-matched argument pairs (balanced: $N/2$ targeted, $N/2$ baseline).}",
-		"\\label{tab:ablation_trajectory_eval}",
+		f"\\caption{{{caption}}}",
+		f"\\label{{{label}}}",
 		f"\\begin{{tabular}}{{{col_spec}}}",
 		"\\toprule",
 	]
@@ -771,7 +807,7 @@ def _compute_win_rates_from_jsonl(
 	return n_total, n_cross_comparisons, targeted_wins, baseline_wins
 
 
-def create_summary_table(output_dir: Path) -> None:
+def create_summary_table(output_dir: Path, topic: str = "single_use_plastic") -> None:
 	"""Create CSV/LaTeX summary from all synthesis types and all baselines.
 
 	Includes all 3 baselines:
@@ -781,6 +817,7 @@ def create_summary_table(output_dir: Path) -> None:
 
 	Args:
 		output_dir: Directory to save outputs.
+		topic: Topic subdirectory name (e.g. single_use_plastic).
 	"""
 	rows = []
 	# All baselines in order: random -> m1b -> original
@@ -796,7 +833,7 @@ def create_summary_table(output_dir: Path) -> None:
 	for synthesis_type in SYNTHESIS_TYPES:
 		for baseline_type in baseline_types:
 			# Load results - load_results_for_type normalizes source columns
-			df = load_results_for_type(synthesis_type, baseline_type)
+			df = load_results_for_type(synthesis_type, baseline_type, topic)
 			if df is None:
 				continue
 
@@ -804,16 +841,21 @@ def create_summary_table(output_dir: Path) -> None:
 			targeted = df[df["source"] == "targeted"]
 			baseline = df[df["source"] == "baseline"]
 
-			# Find comparisons JSONL path (try new naming first, then legacy)
+			# Find comparisons JSONL path (try targeted_generation first, then legacy)
 			base_dir = Path(
-				f"experiments/argument_generation/argument_data/synthesis_{synthesis_type}"
+				f"experiments/argument_generation/argument_data/{topic}/synthesis_{synthesis_type}"
 			)
+			gen_dir = base_dir / "targeted_generation"
 			if baseline_type == "original":
-				comparisons_path = base_dir / "targeted_vs_original_comparisons.jsonl"
+				comparisons_path = gen_dir / "targeted_vs_original_comparisons.jsonl"
+				if not comparisons_path.exists():
+					comparisons_path = base_dir / "targeted_vs_original_comparisons.jsonl"
 				if not comparisons_path.exists():
 					comparisons_path = base_dir / "forced_vs_original_comparisons.jsonl"
 			else:
-				comparisons_path = base_dir / f"targeted_vs_{baseline_type}_comparisons.jsonl"
+				comparisons_path = gen_dir / f"targeted_vs_{baseline_type}_comparisons.jsonl"
+				if not comparisons_path.exists():
+					comparisons_path = base_dir / f"targeted_vs_{baseline_type}_comparisons.jsonl"
 				if not comparisons_path.exists():
 					comparisons_path = base_dir / f"ablation_{baseline_type}_vs_targeted_comparisons.jsonl"
 
@@ -872,13 +914,50 @@ def create_summary_table(output_dir: Path) -> None:
 
 	summary_df = pd.DataFrame(rows)
 
-	# Save as LaTeX
+	# Save full table (all synthesis types)
 	latex_content = generate_latex_table(summary_df)
 	latex_path = Path("paper/latex/tables/ablation_trajectory_summary.tex")
 	latex_path.parent.mkdir(parents=True, exist_ok=True)
 	with open(latex_path, "w") as f:
 		f.write(latex_content)
 	logger.info("Saved LaTeX table to %s", latex_path)
+
+	# Save strict-only table (without synthesis type column)
+	strict_df = summary_df[summary_df["Synthesis Type"] == "Strict"].drop(
+		columns=["Synthesis Type"]
+	)
+	strict_latex = generate_latex_table(
+		strict_df,
+		rows_per_section=len(strict_df) + 1,
+		label="tab:targeted-trajectory-results",
+		caption=(
+			r"Targeted trajectory exploration vs.\ baselines ($N{=}204$--$354$ length-matched arguments, "
+			r"5{,}000 pairwise comparisons each). \textbf{Win (T)}: share of pairwise wins by targeted "
+			r"arguments. \textbf{Top-10/Top-100}: targeted arguments among the top-$n$ by Bradley-Terry score."
+		),
+	)
+	strict_path = Path("paper/tables/argument_generation_targeted_summary.tex")
+	strict_path.parent.mkdir(parents=True, exist_ok=True)
+	with open(strict_path, "w") as f:
+		f.write(strict_latex)
+	logger.info("Saved strict-only LaTeX table to %s", strict_path)
+
+	# Save all-synthesis table to paper/tables/
+	all_latex = generate_latex_table(
+		summary_df,
+		label="tab:targeted-trajectory-results-all",
+		caption=(
+			r"Targeted trajectory exploration vs.\ baselines across all synthesis modes "
+			r"(plastic pollution topic). $N$ is the total number of length-matched arguments "
+			r"(balanced: $N/2$ targeted, $N/2$ baseline), 5{,}000 pairwise comparisons each. "
+			r"\textbf{Win (T)}: share of pairwise wins by targeted arguments. "
+			r"\textbf{Top-10/Top-100}: targeted arguments among the top-$n$ by Bradley-Terry score."
+		),
+	)
+	all_path = Path("paper/tables/argument_generation_targeted_summary_all.tex")
+	with open(all_path, "w") as f:
+		f.write(all_latex)
+	logger.info("Saved all-synthesis LaTeX table to %s", all_path)
 
 	# Print as formatted table
 	logger.info("\n" + "=" * 80)
@@ -887,17 +966,18 @@ def create_summary_table(output_dir: Path) -> None:
 	logger.info("\n%s", summary_df.to_string(index=False))
 
 
-def run_summary_mode(output_dir: Path) -> None:
+def run_summary_mode(output_dir: Path, topic: str = "single_use_plastic") -> None:
 	"""Run summary mode: create unified figures and summary table.
 
 	Args:
 		output_dir: Directory to save outputs.
+		topic: Topic subdirectory name (e.g. single_use_plastic).
 	"""
 	logger.info("Running summary mode (no evaluation, reading existing results)")
 	output_dir.mkdir(parents=True, exist_ok=True)
 
-	create_all_unified_histograms()
-	create_summary_table(output_dir)
+	create_all_unified_histograms(topic)
+	create_summary_table(output_dir, topic)
 
 	logger.info("Summary outputs saved to %s", output_dir)
 
@@ -912,6 +992,7 @@ def run_evaluation(
 	length_tolerance: int,
 	calculate_bt_only: bool,
 	top_n_originals: int = 250,
+	topic: str = "single_use_plastic",
 ) -> None:
 	"""Run evaluation for a single synthesis type and baseline type.
 
@@ -925,16 +1006,19 @@ def run_evaluation(
 		length_tolerance: Max length difference for matched pairs.
 		calculate_bt_only: If True, skip comparisons and recompute BT.
 		top_n_originals: Number of top originals to include (for original baseline).
+		topic: Topic subdirectory name (e.g. single_use_plastic).
 	"""
 	base_dir = Path(
-		f"experiments/argument_generation/argument_data/synthesis_{synthesis_type}"
+		f"experiments/argument_generation/argument_data/{topic}/synthesis_{synthesis_type}"
 	)
-	output_jsonl = base_dir / f"targeted_vs_{baseline_type}_comparisons.jsonl"
-	output_csv = base_dir / f"targeted_vs_{baseline_type}_bt_scores.csv"
+	gen_dir = base_dir / "targeted_generation"
+	gen_dir.mkdir(parents=True, exist_ok=True)
+	output_jsonl = gen_dir / f"targeted_vs_{baseline_type}_comparisons.jsonl"
+	output_csv = gen_dir / f"targeted_vs_{baseline_type}_bt_scores.csv"
 
 	# Load data
-	targeted = load_targeted_arguments(synthesis_type)
-	baseline = load_baseline_arguments(synthesis_type, baseline_type, top_n_originals)
+	targeted = load_targeted_arguments(synthesis_type, topic)
+	baseline = load_baseline_arguments(synthesis_type, baseline_type, top_n_originals, topic)
 
 	base_label = BASELINE_LABELS[baseline_type]
 	logger.info(
@@ -1094,12 +1178,18 @@ def main() -> None:
 		action="store_true",
 		help="Create unified figures and summary table (no evaluation, reads existing results).",
 	)
+	parser.add_argument(
+		"--topic",
+		type=str,
+		default="single_use_plastic_specific_subtopics",
+		help="Topic subdirectory name (default: single_use_plastic_specific_subtopics).",
+	)
 	args = parser.parse_args()
 
 	# Handle --create_summary mode
 	if args.create_summary:
-		output_dir = Path("experiments/argument_generation/argument_data")
-		run_summary_mode(output_dir)
+		output_dir = Path(f"experiments/argument_generation/argument_data/{args.topic}")
+		run_summary_mode(output_dir, args.topic)
 		return
 
 	# For regular evaluation, synthesis_type and baseline_type are required
@@ -1118,6 +1208,7 @@ def main() -> None:
 		length_tolerance=args.length_tolerance,
 		calculate_bt_only=args.calculate_bt_only,
 		top_n_originals=args.top_n_originals,
+		topic=args.topic,
 	)
 
 

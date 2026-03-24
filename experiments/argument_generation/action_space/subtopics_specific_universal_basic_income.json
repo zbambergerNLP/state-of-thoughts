@@ -1,0 +1,46 @@
+{
+	"name": "Causal Subtopics",
+	"definition": "Forces the next reasoning step to analyze the issue through a specific argumentative lens or topical framework, controlling which perspective or moral framework is applied. Interventions along this dimension ensure the next step examines the issue from a particular angle (e.g., economic impact, human rights, justice and fairness, or risk assessment).",
+	"choices": {
+		"poverty_elimination_effectiveness": {
+			"definition": "Examines direct cash transfers as the most efficient mechanism for poverty reduction across developed and developing nations",
+			"internal_reasoning": "I should consider how unconditional cash transfers have consistently outperformed in-kind assistance programs, with evidence from multiple countries showing that recipients invest in education, health, and productive assets rather than wasteful consumption."
+		},
+		"bureaucratic_waste_elimination": {
+			"definition": "Analyzes how replacing complex means-tested welfare with universal payments reduces administrative overhead and errors",
+			"internal_reasoning": "I should examine how current welfare systems spend significant portions of their budgets on eligibility determination, compliance monitoring, and fraud prevention, while means-testing creates poverty traps and excludes many eligible recipients through administrative burden."
+		},
+		"fiscal_sustainability": {
+			"definition": "Evaluates viable funding mechanisms including VAT, wealth taxes, carbon dividends, and sovereign wealth funds",
+			"internal_reasoning": "I should analyze how UBI can be funded through combinations of value-added taxes, progressive wealth taxes, carbon pricing revenue, and reallocation of existing welfare spending, while long-term savings from reduced poverty-related costs improve fiscal sustainability."
+		},
+		"entrepreneurship_and_innovation": {
+			"definition": "Examines how guaranteed income security enables risk-taking, startup creation, and creative pursuits",
+			"internal_reasoning": "I should consider how economic insecurity prevents talented individuals from pursuing entrepreneurship, and how a guaranteed income floor would enable more people to start businesses, invest in skills development, and engage in socially valuable creative work."
+		},
+		"mental_health_and_wellbeing": {
+			"definition": "Analyzes how guaranteed income reduces financial stress and eliminates the stigma of means-tested assistance",
+			"internal_reasoning": "I should examine how financial insecurity is a primary driver of chronic stress, anxiety, and depression, and how UBI's universality eliminates the shame and administrative burden associated with applying for targeted welfare programs."
+		},
+		"automation_and_technological_unemployment": {
+			"definition": "Evaluates UBI as a necessary safety net for workforce displacement driven by AI and robotics",
+			"internal_reasoning": "I should analyze how accelerating automation in manufacturing, transportation, retail, and professional services threatens to displace millions of workers, making a universal income floor essential for maintaining social stability during the economic transition."
+		},
+		"labor_market_empowerment": {
+			"definition": "Examines how UBI strengthens workers' bargaining power and ability to refuse exploitative employment",
+			"internal_reasoning": "I should consider how a guaranteed income floor gives workers genuine freedom to negotiate better conditions, leave abusive employers, pursue education or retraining, and refuse work that is unsafe, underpaid, or degrading."
+		},
+		"gender_equity_effects": {
+			"definition": "Analyzes how UBI values unpaid care work and reduces gendered economic dependency",
+			"internal_reasoning": "I should examine how women disproportionately perform unpaid caregiving and domestic labor that GDP fails to capture, and how UBI provides economic recognition and independence for caregivers while reducing the gendered poverty gap."
+		},
+		"pilot_program_evidence": {
+			"definition": "Draws on positive results from UBI experiments in Finland, Kenya, Stockton, and Alaska to demonstrate real-world effectiveness",
+			"internal_reasoning": "I should analyze how Finland's basic income experiment improved wellbeing and employment confidence, GiveDirectly's Kenya program boosted economic activity, Stockton's SEED program increased full-time employment, and Alaska's Permanent Fund has distributed dividends for decades without adverse effects."
+		},
+		"economic_stimulus_effects": {
+			"definition": "Evaluates how universal cash transfers boost consumer spending, local economies, and small business growth",
+			"internal_reasoning": "I should consider how direct cash transfers to all citizens increase aggregate demand, particularly among lower-income households with high marginal propensity to consume, creating local economic multiplier effects that benefit small businesses and community economies."
+		}
+	}
+}

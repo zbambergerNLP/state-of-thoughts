@@ -1,0 +1,46 @@
+{
+	"name": "Causal Subtopics",
+	"definition": "Forces the next reasoning step to analyze the issue through a specific argumentative lens or topical framework, controlling which perspective or moral framework is applied. Interventions along this dimension ensure the next step examines the issue from a particular angle (e.g., economic impact, human rights, justice and fairness, or risk assessment).",
+	"choices": {
+		"marine_ecosystem_destruction": {
+			"definition": "Examines plastic pollution's impact on ocean life, food chains, and marine habitats",
+			"internal_reasoning": "I should consider how single-use plastics kill marine animals through ingestion and entanglement, degrade coral reefs, and disrupt ocean ecosystems at massive scale."
+		},
+		"microplastics_and_human_health": {
+			"definition": "Analyzes the infiltration of plastic particles into human bodies and potential health consequences",
+			"internal_reasoning": "I should examine emerging evidence that microplastics accumulate in human tissue, blood, and organs, posing uncertain but potentially serious health risks."
+		},
+		"recycling_system_failure": {
+			"definition": "Evaluates why recycling has proven inadequate as a solution to plastic waste",
+			"internal_reasoning": "I should consider that global plastic recycling rates remain below 10%, much plastic is downcycled or exported, and source reduction through bans is therefore necessary."
+		},
+		"carbon_footprint_and_climate": {
+			"definition": "Connects plastic production to fossil fuel extraction and greenhouse gas emissions",
+			"internal_reasoning": "I should analyze how single-use plastics are petrochemical products that contribute to emissions throughout their lifecycle, from extraction to incineration."
+		},
+		"availability_of_alternatives": {
+			"definition": "Assesses whether practical substitutes exist for common single-use plastic applications",
+			"internal_reasoning": "I should demonstrate that reusable, compostable, and biodegradable alternatives are available for bags, straws, containers, and packaging, making a ban practically feasible."
+		},
+		"economic_externalities": {
+			"definition": "Quantifies societal costs of plastic pollution not reflected in product prices",
+			"internal_reasoning": "I should calculate how cleanup costs, healthcare burdens, tourism losses, and ecosystem damage are borne by the public rather than producers—a market failure requiring correction."
+		},
+		"success_of_existing_bans": {
+			"definition": "Draws lessons from jurisdictions that have already implemented plastic restrictions",
+			"internal_reasoning": "I should examine case studies from Rwanda, the EU, Kenya, and various US states showing that bans are enforceable and produce measurable reductions in pollution."
+		},
+		"global_waste_trade_injustice": {
+			"definition": "Addresses how plastic waste burdens fall disproportionately on developing nations",
+			"internal_reasoning": "I should consider how wealthy countries export plastic waste to poorer nations, making this a global justice issue that requires upstream intervention at the production stage."
+		},
+		"corporate_behavior_and_voluntary_failure": {
+			"definition": "Examines why industry self-regulation has proven insufficient to reduce plastic use",
+			"internal_reasoning": "I should analyze how manufacturers default to cheap plastics despite pledges, and why only binding regulation—not voluntary commitments—can shift industry norms."
+		},
+		"intergenerational_responsibility": {
+			"definition": "Considers obligations to future generations given plastic's persistence",
+			"internal_reasoning": "I should evaluate how plastics persist for centuries in the environment, meaning today's convenience imposes long-term burdens on future generations who had no say in their creation."
+		}
+	}
+}

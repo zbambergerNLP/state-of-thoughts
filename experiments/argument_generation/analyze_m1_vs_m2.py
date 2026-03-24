@@ -26,9 +26,11 @@ Output:
     All figures are saved to experiments/argument_generation/figures/.
 """
 
+import argparse
 import itertools
 import json
 import logging
+import shutil
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -60,14 +62,6 @@ N_BOOTSTRAP = 1000  # Number of bootstrap iterations for test set CIs
 BOOTSTRAP_CI = 0.95  # 95% confidence interval
 USE_BOOTSTRAP_COEF_CI = False  # Set to True to show bootstrap CIs on coefficient plots
 
-# Length control flag: when True, includes argument_length in all models and adds M0 baseline
-INCLUDE_LENGTH_CONTROL = False  # Set to True to include argument_length and M0 baseline
-
-# Suffix for figure filenames based on response variable
-FIGURE_SUFFIX = "_rank" if RESPONSE_VARIABLE == "rank_score" else ""
-if INCLUDE_LENGTH_CONTROL:
-	FIGURE_SUFFIX += "_arg_length"
-
 # Set display and plot options
 pd.set_option("display.max_colwidth", 100)
 
@@ -87,49 +81,69 @@ action_space_dir = SCRIPT_DIR / "action_space"
 with open(action_space_dir / "structures.json") as f:
 	STRUCTURES = list(json.load(f)["choices"].keys())
 
-with open(action_space_dir / "subtopics.json") as f:
-	SUBTOPICS = list(json.load(f)["choices"].keys())
+TOPIC_SUBTOPICS_FILES = {
+	"single_use_plastic_specific_subtopics": "subtopics_specific_single_use_plastic.json",
+	"social_media_age_restriction": "subtopics_specific_social_media_age_restriction.json",
+	"universal_basic_income": "subtopics_specific_universal_basic_income.json",
+	"standardized_testing": "subtopics_specific_standardized_testing.json",
+	"meat_tax": "subtopics_specific_meat_tax.json",
+}
+TOPIC_DISPLAY_NAMES = {
+	"single_use_plastic_specific_subtopics": "Plastic Pollution",
+	"social_media_age_restriction": "Social Media Restriction",
+	"universal_basic_income": "Universal Basic Income",
+	"standardized_testing": "Standardized Testing",
+	"meat_tax": "Meat Tax",
+}
+TOPIC_JUDGES = {
+	"single_use_plastic_specific_subtopics": "GPT-5-mini",
+	"social_media_age_restriction": "GPT-5-mini",
+	"universal_basic_income": "GPT-5-mini",
+	"standardized_testing": "Gemini-3.1-Flash-Lite",
+	"meat_tax": "Claude Haiku 4.5",
+}
+SUBTOPICS = []
 
 logger.info(f"Structures ({len(STRUCTURES)}): {STRUCTURES}")
-logger.info(f"Subtopics ({len(SUBTOPICS)}): {SUBTOPICS}")
 
 # Dataset configuration (ordered by flexibility: least to most)
 # File paths are relative to SCRIPT_DIR (argument_generation/ directory)
 ARGUMENT_DATA_DIR = SCRIPT_DIR / "argument_data"
+TOPIC = "single_use_plastic_specific_subtopics"
 FIGURES_DIR = SCRIPT_DIR / "figures"
 DATASETS = {
 	"strict": {
-		"file": ARGUMENT_DATA_DIR / "synthesis_strict" / "pairwise_comparisons_bt_scores.csv",
-		"color": "#e74c3c",  # Red
+		"file": ARGUMENT_DATA_DIR / TOPIC / "synthesis_strict" / "pairwise_comparisons_bt_scores.csv",
+		"color": "#3498db",  # Blue
 		"label": "Strict",
 	},
 	"faithful": {
-		"file": ARGUMENT_DATA_DIR / "synthesis_faithful" / "pairwise_comparisons_bt_scores.csv",
+		"file": ARGUMENT_DATA_DIR / TOPIC / "synthesis_faithful" / "pairwise_comparisons_bt_scores.csv",
 		"color": "#2ecc71",  # Green
 		"label": "Faithful",
 	},
 	"restructured": {
-		"file": ARGUMENT_DATA_DIR / "synthesis_restructured" / "pairwise_comparisons_bt_scores.csv",
-		"color": "#3498db",  # Blue
+		"file": ARGUMENT_DATA_DIR / TOPIC / "synthesis_restructured" / "pairwise_comparisons_bt_scores.csv",
+		"color": "#e74c3c",  # Red
 		"label": "Restructured",
 	},
 }
 
 # Dataset color palettes with model-specific shades (light to dark: M0 -> M1a -> M2)
-# - Strict: shades of red (least flexible)
+# - Strict: shades of blue (least flexible)
 # - Faithful: shades of green (medium flexibility)
-# - Restructured: shades of blue (most flexible)
+# - Restructured: shades of red (most flexible)
 DATASET_PALETTES = {
 	"strict": {
-		"M0": "#ffb3b3",  # Light red (length-only baseline) - more visible
-		"M1a": "#ff8080",  # Medium-light red
-		"M1b": "#ff4d4d",  # Medium red
-		"M1c": "#e60000",  # Dark red
-		"M2": "#990000",  # Darkest red
-		"base": "#e74c3c",  # Base color for single-value plots
+		"M0": "#b3d9ff",  # Light blue (length-only baseline)
+		"M1a": "#80c1ff",  # Medium-light blue
+		"M1b": "#4da6ff",  # Medium blue
+		"M1c": "#1a8cff",  # Dark blue
+		"M2": "#0059b3",  # Darkest blue
+		"base": "#3498db",  # Base color for single-value plots
 	},
 	"faithful": {
-		"M0": "#b3ffb3",  # Light green (length-only baseline) - more visible
+		"M0": "#b3ffb3",  # Light green (length-only baseline)
 		"M1a": "#80ff80",  # Medium-light green
 		"M1b": "#4dcc4d",  # Medium green
 		"M1c": "#33a333",  # Dark green
@@ -137,12 +151,12 @@ DATASET_PALETTES = {
 		"base": "#2ecc71",  # Base color for single-value plots
 	},
 	"restructured": {
-		"M0": "#b3d9ff",  # Light blue (length-only baseline) - more visible
-		"M1a": "#80c1ff",  # Medium-light blue
-		"M1b": "#4da6ff",  # Medium blue
-		"M1c": "#1a8cff",  # Dark blue
-		"M2": "#0059b3",  # Darkest blue
-		"base": "#3498db",  # Base color for single-value plots
+		"M0": "#ffb3b3",  # Light red (length-only baseline)
+		"M1a": "#ff8080",  # Medium-light red
+		"M1b": "#ff4d4d",  # Medium red
+		"M1c": "#e60000",  # Dark red
+		"M2": "#990000",  # Darkest red
+		"base": "#e74c3c",  # Base color for single-value plots
 	},
 }
 
@@ -392,41 +406,38 @@ def create_m0_features(df):
 
 
 def create_m1a_features(df):
-	"""M1a: Structure presence only (+ length control if enabled)."""
+	"""M1a: Structure presence only (+ length control)."""
 	features = [create_structure_presence(df, STRUCTURES)]
-	if INCLUDE_LENGTH_CONTROL:
-		features.append(create_length_feature(df))
+	features.append(create_length_feature(df))
 	return pd.concat(features, axis=1)
 
 
 def create_m1b_features(df):
-	"""M1b: Content presence only (+ length control if enabled)."""
+	"""M1b: Content presence only (+ length control)."""
 	features = [create_content_presence(df, SUBTOPICS)]
-	if INCLUDE_LENGTH_CONTROL:
-		features.append(create_length_feature(df))
+	features.append(create_length_feature(df))
 	return pd.concat(features, axis=1)
 
 
 def create_m1c_features(df):
-	"""M1c: Structure + Content presence (full topic model baseline) (+ length control if enabled)."""
+	"""M1c: Structure + Content presence (full topic model baseline) (+ length control)."""
 	features = [
 		create_structure_presence(df, STRUCTURES),
 		create_content_presence(df, SUBTOPICS),
 	]
-	if INCLUDE_LENGTH_CONTROL:
-		features.append(create_length_feature(df))
+	features.append(create_length_feature(df))
 	return pd.concat(features, axis=1)
 
 
 def create_m2_features(df):
-	"""M2: Full sequential feature set (+ length control if enabled).
+	"""M2: Full sequential feature set (+ length control).
 
 	Includes:
 	1. Position main effects (structure + content at each step)
 	2. Position interactions (structure x content at same step)
 	3. Structure chains (transitions between steps)
 	4. Content chains (transitions between steps)
-	5. Argument length (control variable) - if INCLUDE_LENGTH_CONTROL is True
+	5. Argument length (control variable)
 	"""
 	# Create binary features first
 	binary_features = pd.concat(
@@ -443,11 +454,8 @@ def create_m2_features(df):
 	binary_features = binary_features.loc[:, ~binary_features.columns.duplicated()]
 	binary_features = binary_features.loc[:, binary_features.sum() > 0]
 
-	# Add continuous features if enabled (not filtered by sum > 0)
-	if INCLUDE_LENGTH_CONTROL:
-		features = pd.concat([binary_features, create_length_feature(df)], axis=1)
-	else:
-		features = binary_features
+	# Add continuous length feature (not filtered by sum > 0)
+	features = pd.concat([binary_features, create_length_feature(df)], axis=1)
 	return features
 
 
@@ -626,8 +634,6 @@ def analyze_dataset(name, config):
 	y_test = test_df[RESPONSE_VARIABLE]
 	logger.info(f"Train: {len(train_df)}, Test: {len(test_df)}")
 	logger.info(f"Response variable: {RESPONSE_VARIABLE}")
-	logger.info(f"Length control: {'enabled' if INCLUDE_LENGTH_CONTROL else 'disabled'}")
-
 	# Create feature sets
 	X_m1a_train = create_m1a_features(train_df)
 	X_m1b_train = create_m1b_features(train_df)
@@ -636,25 +642,20 @@ def analyze_dataset(name, config):
 
 	# Remove zero-variance binary columns (but keep continuous features like argument_length)
 	def filter_zero_variance(X):
-		if INCLUDE_LENGTH_CONTROL:
-			binary_cols = [c for c in X.columns if c != "argument_length"]
-			keep_binary = [c for c in binary_cols if X[c].sum() > 0]
-			keep_cols = keep_binary + (["argument_length"] if "argument_length" in X.columns else [])
-			return X[keep_cols]
-		else:
-			return X.loc[:, X.sum() > 0]
+		binary_cols = [c for c in X.columns if c != "argument_length"]
+		keep_binary = [c for c in binary_cols if X[c].sum() > 0]
+		keep_cols = keep_binary + (["argument_length"] if "argument_length" in X.columns else [])
+		return X[keep_cols]
 
 	X_m1a_train = filter_zero_variance(X_m1a_train)
 	X_m1b_train = filter_zero_variance(X_m1b_train)
 	X_m1c_train = filter_zero_variance(X_m1c_train)
 
-	# M0 features (length only) - only created when INCLUDE_LENGTH_CONTROL is True
-	if INCLUDE_LENGTH_CONTROL:
-		X_m0_train = create_m0_features(train_df)
+	# M0 features (length only)
+	X_m0_train = create_m0_features(train_df)
 
 	logger.info(f"\nFeature counts:")
-	if INCLUDE_LENGTH_CONTROL:
-		logger.info(f"  M0 (Length Only):         {X_m0_train.shape[1]}")
+	logger.info(f"  M0 (Length Only):         {X_m0_train.shape[1]}")
 	logger.info(f"  M1a (Structure Presence): {X_m1a_train.shape[1]}")
 	logger.info(f"  M1b (Content Presence):   {X_m1b_train.shape[1]}")
 	logger.info(f"  M1c (Both Presence):      {X_m1c_train.shape[1]}")
@@ -663,9 +664,8 @@ def analyze_dataset(name, config):
 	# Run cross-validation
 	logger.info("\nRunning 10-fold cross-validation...")
 
-	# M0 model (OLS, length only) - only when INCLUDE_LENGTH_CONTROL is True
-	if INCLUDE_LENGTH_CONTROL:
-		cv_m0 = run_cv_ols(X_m0_train, y_train)
+	# M0 model (OLS, length only)
+	cv_m0 = run_cv_ols(X_m0_train, y_train)
 
 	# M1 models (OLS)
 	cv_m1a = run_cv_ols(X_m1a_train, y_train)
@@ -676,8 +676,7 @@ def analyze_dataset(name, config):
 	cv_m2 = run_cv_lasso(X_m2_train, y_train)
 
 	logger.info(f"\nCV Results:")
-	if INCLUDE_LENGTH_CONTROL:
-		logger.info(f"  M0 (Length Only):         R² = {cv_m0['mean']:.4f} ± {cv_m0['std']:.4f}")
+	logger.info(f"  M0 (Length Only):         R² = {cv_m0['mean']:.4f} ± {cv_m0['std']:.4f}")
 	logger.info(
 		f"  M1a (Structure Presence): R² = {cv_m1a['mean']:.4f} ± {cv_m1a['std']:.4f}"
 	)
@@ -688,18 +687,16 @@ def analyze_dataset(name, config):
 	)
 
 	# Fit final models on full training set
-	if INCLUDE_LENGTH_CONTROL:
-		model_m0 = LinearRegression().fit(X_m0_train, y_train)
+	model_m0 = LinearRegression().fit(X_m0_train, y_train)
 	model_m1a = LinearRegression().fit(X_m1a_train, y_train)
 	model_m1b = LinearRegression().fit(X_m1b_train, y_train)
 	model_m1c = LinearRegression().fit(X_m1c_train, y_train)
 	model_m2 = Lasso(alpha=cv_m2["best_alpha"], max_iter=10000).fit(X_m2_train, y_train)
 
 	# Prepare test features (aligned with training columns)
-	if INCLUDE_LENGTH_CONTROL:
-		X_m0_test = create_m0_features(test_df).reindex(
-			columns=X_m0_train.columns, fill_value=0
-		)
+	X_m0_test = create_m0_features(test_df).reindex(
+		columns=X_m0_train.columns, fill_value=0
+	)
 	X_m1a_test = create_m1a_features(test_df).reindex(
 		columns=X_m1a_train.columns, fill_value=0
 	)
@@ -714,16 +711,14 @@ def analyze_dataset(name, config):
 	)
 
 	# Test set evaluation with bootstrap confidence intervals
-	if INCLUDE_LENGTH_CONTROL:
-		test_m0 = bootstrap_r2(y_test, model_m0.predict(X_m0_test))
+	test_m0 = bootstrap_r2(y_test, model_m0.predict(X_m0_test))
 	test_m1a = bootstrap_r2(y_test, model_m1a.predict(X_m1a_test))
 	test_m1b = bootstrap_r2(y_test, model_m1b.predict(X_m1b_test))
 	test_m1c = bootstrap_r2(y_test, model_m1c.predict(X_m1c_test))
 	test_m2 = bootstrap_r2(y_test, model_m2.predict(X_m2_test))
 
 	logger.info(f"\nTest Set Results (with 95% CI):")
-	if INCLUDE_LENGTH_CONTROL:
-		logger.info(f"  M0 (Length Only):         R² = {test_m0['point']:.4f} [{test_m0['ci_lower']:.4f}, {test_m0['ci_upper']:.4f}]")
+	logger.info(f"  M0 (Length Only):         R² = {test_m0['point']:.4f} [{test_m0['ci_lower']:.4f}, {test_m0['ci_upper']:.4f}]")
 	logger.info(f"  M1a (Structure Presence): R² = {test_m1a['point']:.4f} [{test_m1a['ci_lower']:.4f}, {test_m1a['ci_upper']:.4f}]")
 	logger.info(f"  M1b (Content Presence):   R² = {test_m1b['point']:.4f} [{test_m1b['ci_lower']:.4f}, {test_m1b['ci_upper']:.4f}]")
 	logger.info(f"  M1c (Both Presence):      R² = {test_m1c['point']:.4f} [{test_m1c['ci_lower']:.4f}, {test_m1c['ci_upper']:.4f}]")
@@ -758,6 +753,7 @@ def analyze_dataset(name, config):
 
 	# Build result dict
 	n_features = {
+		"M0": X_m0_train.shape[1],
 		"M1a": X_m1a_train.shape[1],
 		"M1b": X_m1b_train.shape[1],
 		"M1c": X_m1c_train.shape[1],
@@ -765,23 +761,19 @@ def analyze_dataset(name, config):
 		"M2_selected": int(cv_m2["n_selected"]),
 	}
 	cv_results = {
+		"M0": cv_m0,
 		"M1a": cv_m1a,
 		"M1b": cv_m1b,
 		"M1c": cv_m1c,
 		"M2": cv_m2,
 	}
 	test_results = {
+		"M0": test_m0,
 		"M1a": test_m1a,
 		"M1b": test_m1b,
 		"M1c": test_m1c,
 		"M2": test_m2,
 	}
-
-	# Add M0 results if length control is enabled
-	if INCLUDE_LENGTH_CONTROL:
-		n_features["M0"] = X_m0_train.shape[1]
-		cv_results["M0"] = cv_m0
-		test_results["M0"] = test_m0
 
 	return {
 		"name": name,
@@ -891,15 +883,89 @@ def plot_length_histograms():
 
 	plt.suptitle("Argument Length Distributions by Synthesis Type", fontweight="bold", y=1.02)
 	plt.tight_layout()
-	filename = f"argument_length_histograms{FIGURE_SUFFIX}.pdf"
+	filename = "argument_length_histograms_rank_arg_length.pdf"
 	plt.savefig(FIGURES_DIR / filename, dpi=300, bbox_inches="tight")
 	plt.close()
 	logger.info(f"Saved: {filename}")
 
 
-def plot_feature_categories(results_no_length, results_with_length):
-	"""Figure 4: M2 Feature Category Breakdown as Stacked Bar Chart (two panels)."""
-	fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+def plot_unified_length_histograms():
+	"""Plot a 5x3 grid of argument length histograms (topics x synthesis types)."""
+	topic_keys = list(TOPIC_SUBTOPICS_FILES.keys())
+	synthesis_types = ["strict", "faithful", "restructured"]
+	synthesis_labels = {"strict": "Strict", "faithful": "Faithful", "restructured": "Restructured"}
+	n_topics = len(topic_keys)
+	n_synth = len(synthesis_types)
+
+	fig, axes = plt.subplots(
+		n_topics, n_synth, figsize=(12, 2 * n_topics), sharex=True, sharey=True
+	)
+
+	for row, topic_key in enumerate(topic_keys):
+		display_name = TOPIC_DISPLAY_NAMES.get(topic_key, topic_key)
+		for col, synth in enumerate(synthesis_types):
+			ax = axes[row, col]
+			csv_path = (
+				ARGUMENT_DATA_DIR / topic_key / f"synthesis_{synth}"
+				/ "pairwise_comparisons_bt_scores.csv"
+			)
+			df = pd.read_csv(csv_path)
+			df = df.drop_duplicates(subset=["final_argument"])
+			lengths = df["final_argument"].str.len()
+
+			ax.hist(
+				lengths,
+				bins=50,
+				color=DATASET_PALETTES[synth]["base"],
+				edgecolor="white",
+				linewidth=0.5,
+				alpha=0.8,
+			)
+
+			mean_len = lengths.mean()
+			median_len = lengths.median()
+			ax.axvline(
+				mean_len, color="black", linestyle="--", linewidth=1.2,
+				label=f"Mean: {mean_len:.0f}",
+			)
+			ax.axvline(
+				median_len, color="black", linestyle=":", linewidth=1.2,
+				label=f"Median: {median_len:.0f}",
+			)
+
+			ax.legend(fontsize=7, loc="upper right")
+			apply_clean_style(ax)
+
+			# Column titles on first row
+			if row == 0:
+				ax.set_title(synthesis_labels[synth], fontweight="bold", fontsize=12)
+
+			# Row labels on first column
+			if col == 0:
+				ax.set_ylabel(display_name, fontsize=10)
+
+			# X-axis label on last row
+			if row == n_topics - 1:
+				ax.set_xlabel("Argument Length (chars)", fontsize=9)
+
+	plt.tight_layout()
+	unified_dir = SCRIPT_DIR / "figures" / "predictability"
+	unified_dir.mkdir(parents=True, exist_ok=True)
+	filename = "unified_length_histograms.pdf"
+	plt.savefig(unified_dir / filename, dpi=300, bbox_inches="tight")
+	plt.close()
+	logger.info(f"Saved unified length histograms: {filename}")
+
+	# Copy to paper figures
+	paper_fig_dir = SCRIPT_DIR / ".." / ".." / "paper" / "figures" / "results" / "argument_generation"
+	paper_fig_dir.mkdir(parents=True, exist_ok=True)
+	shutil.copy2(unified_dir / filename, paper_fig_dir / filename)
+	logger.info(f"Copied {filename} to {paper_fig_dir}")
+
+
+def plot_feature_categories(all_results):
+	"""Figure 4: M2 Feature Category Breakdown as Stacked Bar Chart."""
+	fig, ax = plt.subplots(figsize=(8, 6))
 
 	category_colors = {
 		"Structure Position": "#e74c3c",
@@ -920,44 +986,33 @@ def plot_feature_categories(results_no_length, results_with_length):
 	datasets_list = list(DATASETS.keys())
 	x = np.arange(len(datasets_list))
 
-	panels = [
-		(axes[0], results_no_length, "(A) Without Length Control"),
-		(axes[1], results_with_length, "(B) With Length Control"),
-	]
+	bottom = np.zeros(len(datasets_list))
+	for cat in categories:
+		counts = [
+			len(all_results[ds]["feature_categories"].get(cat, []))
+			for ds in datasets_list
+		]
+		ax.bar(x, counts, bottom=bottom, label=cat, color=category_colors[cat])
 
-	for ax, all_results, title in panels:
-		bottom = np.zeros(len(datasets_list))
-		for cat in categories:
-			counts = [
-				len(all_results[ds]["feature_categories"].get(cat, []))
-				for ds in datasets_list
-			]
-			ax.bar(x, counts, bottom=bottom, label=cat, color=category_colors[cat])
+		for i, (count, b) in enumerate(zip(counts, bottom)):
+			if count > 0:
+				ax.text(
+					i, b + count / 2, str(count),
+					ha="center", va="center", fontsize=11, fontweight="bold"
+				)
 
-			for i, (count, b) in enumerate(zip(counts, bottom)):
-				if count > 0:
-					ax.text(
-						i, b + count / 2, str(count),
-						ha="center", va="center", fontsize=11, fontweight="bold"
-					)
+		bottom = bottom + np.array(counts)
 
-			bottom = bottom + np.array(counts)
+	ax.set_xticks(x)
+	ax.set_xticklabels([DATASETS[ds]["label"] for ds in datasets_list], fontsize=12)
+	ax.set_xlabel("Synthesis Type", fontsize=13)
+	ax.set_ylabel("Number of Selected Features", fontsize=13)
+	ax.set_title("M2 Feature Categories", fontweight="bold", fontsize=14)
+	ax.tick_params(axis="both", labelsize=11)
+	apply_clean_style(ax)
 
-		ax.set_xticks(x)
-		ax.set_xticklabels([DATASETS[ds]["label"] for ds in datasets_list], fontsize=12)
-		ax.set_xlabel("Synthesis Type", fontsize=13)
-		ax.set_ylabel("Number of Selected Features", fontsize=13)
-		ax.set_title(title, fontweight="bold", fontsize=14)
-		ax.tick_params(axis="both", labelsize=11)
-		apply_clean_style(ax)
-
-	# Sync y-axis across panels
-	y_max = max(ax.get_ylim()[1] for ax in axes)
-	for ax in axes:
-		ax.set_ylim(0, y_max)
-
-	# Single shared legend
-	handles, labels = axes[0].get_legend_handles_labels()
+	# Legend
+	handles, labels = ax.get_legend_handles_labels()
 	fig.legend(
 		handles, labels,
 		loc="lower center",
@@ -968,8 +1023,7 @@ def plot_feature_categories(results_no_length, results_with_length):
 	)
 
 	plt.tight_layout(rect=[0, 0.06, 1, 1])
-	suffix = "_rank" if RESPONSE_VARIABLE == "rank_score" else ""
-	filename = f"m2_feature_categories{suffix}.pdf"
+	filename = "m2_feature_categories_rank.pdf"
 	plt.savefig(FIGURES_DIR / filename, dpi=300, bbox_inches="tight")
 	plt.close()
 	logger.info(f"Saved: {filename}")
@@ -1092,69 +1146,56 @@ def plot_top_features(all_results):
 	)
 
 	plt.tight_layout(rect=[0, 0.03, 1, 1])
-	filename = f"m2_top_features{FIGURE_SUFFIX}.pdf"
+	filename = "m2_top_features_rank_arg_length.pdf"
 	plt.savefig(FIGURES_DIR / filename, dpi=300, bbox_inches="tight")
 	plt.close()
 	logger.info(f"Saved: {filename}")
 
 
-def plot_alpha_selection(results_no_length, results_with_length):
-	"""Figure 6: Alpha Selection Curves (two panels)."""
-	fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+def plot_alpha_selection(all_results):
+	"""Figure 6: Alpha Selection Curves."""
+	fig, ax = plt.subplots(figsize=(8, 6))
 	datasets_list = list(DATASETS.keys())
 
-	panels = [
-		(axes[0], results_no_length, "(A) Without Length Control"),
-		(axes[1], results_with_length, "(B) With Length Control"),
-	]
+	for ds in datasets_list:
+		result = all_results[ds]
+		alpha_df = result["alpha_results"]
+		base_color = DATASET_PALETTES[ds]["base"]
 
-	for ax, all_results, title in panels:
-		for ds in datasets_list:
-			result = all_results[ds]
-			alpha_df = result["alpha_results"]
-			base_color = DATASET_PALETTES[ds]["base"]
+		ax.errorbar(
+			alpha_df["alpha"],
+			alpha_df["mean"],
+			yerr=alpha_df["std"],
+			marker="o",
+			capsize=3,
+			label=result["label"],
+			color=base_color,
+			linewidth=2,
+		)
 
-			ax.errorbar(
-				alpha_df["alpha"],
-				alpha_df["mean"],
-				yerr=alpha_df["std"],
-				marker="o",
-				capsize=3,
-				label=result["label"],
-				color=base_color,
-				linewidth=2,
-			)
+		best_idx = alpha_df["mean"].idxmax()
+		best = alpha_df.loc[best_idx]
+		ax.scatter(
+			[best["alpha"]],
+			[best["mean"]],
+			marker="*",
+			s=200,
+			color=base_color,
+			zorder=5,
+		)
 
-			best_idx = alpha_df["mean"].idxmax()
-			best = alpha_df.loc[best_idx]
-			ax.scatter(
-				[best["alpha"]],
-				[best["mean"]],
-				marker="*",
-				s=200,
-				color=base_color,
-				zorder=5,
-			)
-
-		ax.set_xscale("log")
-		ax.set_xlabel("Alpha (log scale)", fontsize=13)
-		ax.set_ylabel("CV R²", fontsize=13)
-		ax.set_title(title, fontweight="bold", fontsize=14)
-		ax.legend(fontsize=11)
-		ax.tick_params(axis="both", labelsize=11)
-		ax.spines["top"].set_visible(False)
-		ax.spines["right"].set_visible(False)
-		ax.grid(True, alpha=0.3, zorder=0, axis="y")
-
-	# Sync y-axis across panels
-	y_min = min(ax.get_ylim()[0] for ax in axes)
-	y_max = max(ax.get_ylim()[1] for ax in axes)
-	for ax in axes:
-		ax.set_ylim(y_min, y_max)
+	ax.set_xscale("log")
+	ax.set_xlabel("Alpha (log scale)", fontsize=13)
+	ax.set_ylabel("CV R²", fontsize=13)
+	ax.set_title("M2 Alpha Selection", fontweight="bold", fontsize=14)
+	ax.legend(fontsize=11)
+	ax.tick_params(axis="both", labelsize=11)
+	ax.spines["top"].set_visible(False)
+	ax.spines["right"].set_visible(False)
+	ax.grid(True, alpha=0.3, zorder=0, axis="y")
 
 	plt.tight_layout()
-	suffix = "_rank" if RESPONSE_VARIABLE == "rank_score" else ""
-	filename = f"m2_alpha_selection{suffix}.pdf"
+	filename = "m2_alpha_selection_rank.pdf"
 	plt.savefig(FIGURES_DIR / filename, dpi=300, bbox_inches="tight")
 	plt.close()
 	logger.info(f"Saved: {filename}")
@@ -1175,9 +1216,9 @@ def plot_main_figure(all_results):
 	# Left panel: CV Performance Comparison
 	# -------------------------------------------------------------------------
 	ax = axes[0]
-	models = ["M0", "M1a", "M1b", "M1c", "M2"] if INCLUDE_LENGTH_CONTROL else ["M1a", "M1b", "M1c", "M2"]
+	models = ["M0", "M1a", "M1b", "M1c", "M2"]
 	x = np.arange(len(DATASETS))
-	width = 0.15 if INCLUDE_LENGTH_CONTROL else 0.2
+	width = 0.15
 
 	for i, model in enumerate(models):
 		means = [all_results[ds]["cv"][model]["mean"] for ds in DATASETS]
@@ -1195,24 +1236,16 @@ def plot_main_figure(all_results):
 	ax.set_xticks(x + (len(models) - 1) * width / 2)
 	ax.set_xticklabels([DATASETS[ds]["label"] for ds in DATASETS])
 
-	if INCLUDE_LENGTH_CONTROL:
-		model_legend = [
-			Patch(facecolor="#999999", edgecolor="black", label="M0 (Length Only)"),
-			Patch(facecolor="#777777", edgecolor="black", label="M1a (Structure)"),
-			Patch(facecolor="#555555", edgecolor="black", label="M1b (Content)"),
-			Patch(facecolor="#333333", edgecolor="black", label="M1c (Both)"),
-			Patch(facecolor="#111111", edgecolor="black", label="M2 (Sequential)"),
-		]
-	else:
-		model_legend = [
-			Patch(facecolor="#777777", edgecolor="black", label="M1a (Structure)"),
-			Patch(facecolor="#555555", edgecolor="black", label="M1b (Content)"),
-			Patch(facecolor="#333333", edgecolor="black", label="M1c (Both)"),
-			Patch(facecolor="#111111", edgecolor="black", label="M2 (Sequential)"),
-		]
+	model_legend = [
+		Patch(facecolor="#999999", edgecolor="black", label="M0 (Length Only)"),
+		Patch(facecolor="#777777", edgecolor="black", label="M1a (Structure)"),
+		Patch(facecolor="#555555", edgecolor="black", label="M1b (Content)"),
+		Patch(facecolor="#333333", edgecolor="black", label="M1c (Both)"),
+		Patch(facecolor="#111111", edgecolor="black", label="M2 (Sequential)"),
+	]
 	ax.legend(
 		handles=model_legend,
-		loc="upper left",
+		loc="lower right",
 		fontsize=8,
 		frameon=True,
 	)
@@ -1222,9 +1255,9 @@ def plot_main_figure(all_results):
 	# Right panel: Test Set Performance with 95% CI
 	# -------------------------------------------------------------------------
 	ax = axes[1]
-	models = ["M0", "M1a", "M1b", "M1c", "M2"] if INCLUDE_LENGTH_CONTROL else ["M1a", "M1b", "M1c", "M2"]
+	models = ["M0", "M1a", "M1b", "M1c", "M2"]
 	x = np.arange(len(DATASETS))
-	width = 0.15 if INCLUDE_LENGTH_CONTROL else 0.2
+	width = 0.15
 
 	for i, model in enumerate(models):
 		scores = [all_results[ds]["test"][model]["point"] for ds in DATASETS]
@@ -1246,17 +1279,193 @@ def plot_main_figure(all_results):
 
 	ax.legend(
 		handles=model_legend,
-		loc="upper left",
+		loc="lower right",
 		fontsize=8,
 		frameon=True,
 	)
 	apply_clean_style(ax)
 
 	plt.tight_layout()
-	filename = f"m1_vs_m2_main_figure{FIGURE_SUFFIX}.pdf"
+	filename = "m1_vs_m2_main_figure_rank_arg_length.pdf"
 	plt.savefig(FIGURES_DIR / filename, dpi=300, bbox_inches="tight")
 	plt.close()
 	logger.info(f"Saved: {filename}")
+
+
+def plot_unified_cross_topic(
+	topic_results: dict[str, dict[str, dict]],
+) -> None:
+	"""Unified 1x3 panel figure showing Test R² across all topics.
+
+	Args:
+		topic_results: {topic_key: all_results_dict} where each all_results_dict
+			is keyed by synthesis type with "test" sub-dicts containing
+			"point", "ci_lower", "ci_upper" per model.
+	"""
+	from matplotlib.patches import Patch
+
+	topic_keys = list(topic_results.keys())
+	n_topics = len(topic_keys)
+	fig_width = max(18, n_topics * 3.6)
+	fig, axes = plt.subplots(1, n_topics, figsize=(fig_width, 5), sharey=True)
+
+	if n_topics == 1:
+		axes = [axes]
+
+	datasets_list = ["strict", "faithful", "restructured"]
+	models = ["M0", "M1a", "M1b", "M1c", "M2"]
+	n_models = len(models)
+	width = 0.15
+	x = np.arange(len(datasets_list))
+	panel_labels = [chr(ord("A") + i) for i in range(n_topics)]
+
+	for panel_idx, topic_key in enumerate(topic_keys):
+		ax = axes[panel_idx]
+		all_results = topic_results[topic_key]
+		display_name = TOPIC_DISPLAY_NAMES.get(topic_key, topic_key)
+
+		for i, model in enumerate(models):
+			for j, ds in enumerate(datasets_list):
+				score = all_results[ds]["test"][model]["point"]
+				lower_err = score - all_results[ds]["test"][model]["ci_lower"]
+				upper_err = all_results[ds]["test"][model]["ci_upper"] - score
+				color = DATASET_PALETTES[ds][model]
+
+				ax.bar(
+					x[j] + i * width,
+					score,
+					width,
+					color=color,
+					edgecolor="white",
+					linewidth=0.5,
+					yerr=[[lower_err], [upper_err]],
+					capsize=2,
+					error_kw={"ecolor": "black", "elinewidth": 0.8},
+				)
+
+		ax.set_xlabel("Synthesis Type")
+		ax.set_title(
+			f"({panel_labels[panel_idx]}) {display_name}", fontweight="bold"
+		)
+		ax.set_xticks(x + (n_models - 1) * width / 2)
+		ax.set_xticklabels(
+			[DATASETS[ds]["label"] for ds in datasets_list]
+		)
+		apply_clean_style(ax)
+
+		if panel_idx == 0:
+			ax.set_ylabel("Test R²")
+
+	# Single legend on the right
+	model_legend = [
+		Patch(facecolor="#999999", edgecolor="black", label="M0 (Length Only)"),
+		Patch(facecolor="#777777", edgecolor="black", label="M1a (Structure)"),
+		Patch(facecolor="#555555", edgecolor="black", label="M1b (Content)"),
+		Patch(facecolor="#333333", edgecolor="black", label="M1c (Both)"),
+		Patch(facecolor="#111111", edgecolor="black", label="M2 (Sequential)"),
+	]
+	axes[-1].legend(
+		handles=model_legend,
+		loc="lower right",
+		fontsize=8,
+		frameon=True,
+	)
+
+	plt.tight_layout()
+	unified_dir = SCRIPT_DIR / "figures" / "predictability"
+	unified_dir.mkdir(parents=True, exist_ok=True)
+	filename = "unified_cross_topic_test_r2_rank_arg_length.pdf"
+	plt.savefig(unified_dir / filename, dpi=300, bbox_inches="tight")
+	plt.close()
+	logger.info(f"Saved unified cross-topic figure: {filename}")
+
+
+def plot_strict_cross_topic(
+	topic_results: dict[str, dict[str, dict]],
+) -> None:
+	"""Single-panel grouped bar chart of strict-only Test R2 across all topics.
+
+	Args:
+		topic_results: {topic_key: all_results_dict} where each all_results_dict
+			is keyed by synthesis type with "test" sub-dicts containing
+			"point", "ci_lower", "ci_upper" per model.
+	"""
+	from matplotlib.patches import Patch
+
+	topic_keys = list(topic_results.keys())
+	n_topics = len(topic_keys)
+
+	models = ["M0", "M1a", "M1b", "M1c", "M2"]
+	n_models = len(models)
+	width = 0.15
+
+	# Blue shades for strict-only figure (light to dark: M0 -> M2)
+	model_colors = {
+		"M0": "#b3d9ff",
+		"M1a": "#80c1ff",
+		"M1b": "#4da6ff",
+		"M1c": "#1a8cff",
+		"M2": "#0059b3",
+	}
+	fig, ax = plt.subplots(figsize=(10, 4))
+	x = np.arange(n_topics)
+
+	for i, model in enumerate(models):
+		for j, topic_key in enumerate(topic_keys):
+			results = topic_results[topic_key]
+			if "strict" not in results:
+				continue
+			score = results["strict"]["test"][model]["point"]
+			lower_err = score - results["strict"]["test"][model]["ci_lower"]
+			upper_err = results["strict"]["test"][model]["ci_upper"] - score
+
+			ax.bar(
+				x[j] + i * width,
+				score,
+				width,
+				color=model_colors[model],
+				edgecolor="white",
+				linewidth=0.5,
+				yerr=[[lower_err], [upper_err]],
+				capsize=2,
+				error_kw={"ecolor": "black", "elinewidth": 0.8},
+			)
+
+	# Two-line x-axis labels: topic name + judge
+	x_labels = []
+	for topic_key in topic_keys:
+		display_name = TOPIC_DISPLAY_NAMES.get(topic_key, topic_key)
+		judge = TOPIC_JUDGES.get(topic_key, "")
+		x_labels.append(f"{display_name}\n({judge})")
+
+	ax.set_xticks(x + (n_models - 1) * width / 2)
+	ax.set_xticklabels(x_labels, fontsize=9)
+	ax.set_ylabel("Test R\u00b2")
+	ax.set_title("Predictability Across Topics", fontweight="bold")
+	apply_clean_style(ax)
+
+	# Legend (blue shades matching bars)
+	model_legend = [
+		Patch(facecolor="#b3d9ff", edgecolor="black", label="M0 (Length Only)"),
+		Patch(facecolor="#80c1ff", edgecolor="black", label="M1a (Structure)"),
+		Patch(facecolor="#4da6ff", edgecolor="black", label="M1b (Content)"),
+		Patch(facecolor="#1a8cff", edgecolor="black", label="M1c (Both)"),
+		Patch(facecolor="#0059b3", edgecolor="black", label="M2 (Sequential)"),
+	]
+	ax.legend(
+		handles=model_legend,
+		loc="lower right",
+		fontsize=8,
+		frameon=True,
+	)
+
+	plt.tight_layout()
+	unified_dir = SCRIPT_DIR / "figures" / "predictability"
+	unified_dir.mkdir(parents=True, exist_ok=True)
+	filename = "strict_cross_topic_test_r2_rank_arg_length.pdf"
+	plt.savefig(unified_dir / filename, dpi=300, bbox_inches="tight")
+	plt.close()
+	logger.info(f"Saved strict cross-topic figure: {filename}")
 
 
 def _fmt_r2(result_dict):
@@ -1267,12 +1476,113 @@ def _fmt_r2(result_dict):
 
 
 
-def generate_latex_table(results_no_length, results_with_length):
+def plot_cross_topic_by_synthesis(
+	topic_results: dict[str, dict[str, dict]],
+) -> None:
+	"""3-row cross-topic figure: one row per synthesis mode (strict, faithful, restructured).
+
+	Each row is a grouped bar chart with topics on x-axis and models as grouped bars,
+	matching the layout of plot_strict_cross_topic but stacked vertically for all
+	three synthesis modes.
+
+	Args:
+		topic_results: {topic_key: all_results_dict} where each all_results_dict
+			is keyed by synthesis type with "test" sub-dicts containing
+			"point", "ci_lower", "ci_upper" per model.
+	"""
+	from matplotlib.patches import Patch
+
+	topic_keys = list(topic_results.keys())
+	n_topics = len(topic_keys)
+
+	synthesis_modes = ["strict", "faithful", "restructured"]
+	synthesis_labels = {
+		"strict": "Predictability - Strict Synthesis",
+		"faithful": "Predictability - Faithful Synthesis",
+		"restructured": "Predictability - Restructured Synthesis",
+	}
+
+	models = ["M0", "M1a", "M1b", "M1c", "M2"]
+	n_models = len(models)
+	width = 0.15
+
+	fig, axes = plt.subplots(3, 1, figsize=(10, 10), sharey=True)
+
+	for row, synth in enumerate(synthesis_modes):
+		ax = axes[row]
+		# Use synthesis-specific color shades
+		model_colors = {m: DATASET_PALETTES[synth][m] for m in models}
+
+		x = np.arange(n_topics)
+
+		for i, model in enumerate(models):
+			for j, topic_key in enumerate(topic_keys):
+				results = topic_results[topic_key]
+				if synth not in results:
+					continue
+				score = results[synth]["test"][model]["point"]
+				lower_err = score - results[synth]["test"][model]["ci_lower"]
+				upper_err = results[synth]["test"][model]["ci_upper"] - score
+
+				ax.bar(
+					x[j] + i * width,
+					score,
+					width,
+					color=model_colors[model],
+					edgecolor="white",
+					linewidth=0.5,
+					yerr=[[lower_err], [upper_err]],
+					capsize=2,
+					error_kw={"ecolor": "black", "elinewidth": 0.8},
+				)
+
+		# Two-line x-axis labels: topic name + judge
+		x_labels = []
+		for topic_key in topic_keys:
+			display_name = TOPIC_DISPLAY_NAMES.get(topic_key, topic_key)
+			judge = TOPIC_JUDGES.get(topic_key, "")
+			x_labels.append(f"{display_name}\n({judge})")
+
+		ax.set_xticks(x + (n_models - 1) * width / 2)
+		ax.set_xticklabels(x_labels, fontsize=9)
+		ax.set_ylabel("Test R\u00b2")
+		ax.set_title(synthesis_labels[synth], fontweight="bold")
+		apply_clean_style(ax)
+
+	# Shared legend from first row
+	model_legend = [
+		Patch(facecolor="#999999", edgecolor="black", label="M0 (Length Only)"),
+		Patch(facecolor="#777777", edgecolor="black", label="M1a (Structure)"),
+		Patch(facecolor="#555555", edgecolor="black", label="M1b (Content)"),
+		Patch(facecolor="#333333", edgecolor="black", label="M1c (Both)"),
+		Patch(facecolor="#111111", edgecolor="black", label="M2 (Sequential)"),
+	]
+	fig.legend(
+		handles=model_legend,
+		loc="lower center",
+		bbox_to_anchor=(0.5, -0.02),
+		ncol=len(models),
+		fontsize=8,
+		frameon=True,
+	)
+
+	plt.tight_layout(rect=[0, 0.04, 1, 1])
+	unified_dir = SCRIPT_DIR / "figures" / "predictability"
+	unified_dir.mkdir(parents=True, exist_ok=True)
+	filename = "cross_topic_by_synthesis_test_r2_rank_arg_length.pdf"
+	plt.savefig(unified_dir / filename, dpi=300, bbox_inches="tight")
+	plt.close()
+	logger.info(f"Saved cross-topic by synthesis figure: {filename}")
+	_copy_to_paper(unified_dir, filename)
+
+
+def generate_latex_table(results_no_length, results_with_length, topic_key=None):
 	"""Generate LaTeX table with all models, two sections (with/without length control).
 
 	Args:
 		results_no_length: Results dict from run without length control.
 		results_with_length: Results dict from run with length control.
+		topic_key: Optional topic key for per-topic table filename.
 
 	Returns the LaTeX code as a string and saves to file.
 	"""
@@ -1331,7 +1641,8 @@ def generate_latex_table(results_no_length, results_with_length):
 	latex_code = "\n".join(lines)
 
 	# Save to file
-	out_path = SCRIPT_DIR / ".." / ".." / "paper" / "latex" / "tables" / "argument_generation_results.tex"
+	suffix = f"_{topic_key}" if topic_key else ""
+	out_path = SCRIPT_DIR / ".." / ".." / "paper" / "latex" / "tables" / f"argument_generation_results{suffix}.tex"
 	out_path.parent.mkdir(parents=True, exist_ok=True)
 	out_path.write_text(latex_code)
 	logger.info(f"Saved LaTeX table: {out_path.resolve()}")
@@ -1344,189 +1655,138 @@ def generate_latex_table(results_no_length, results_with_length):
 	return latex_code
 
 
-def plot_summary_dashboard(all_results, show_ci=True):
-	"""Figure 7: Summary Dashboard with optional 95% CI error bars."""
-	from matplotlib.patches import Patch
+def generate_unified_latex_table(
+	all_topics_no_length: dict[str, dict[str, dict]],
+	all_topics_with_length: dict[str, dict[str, dict]],
+) -> str:
+	"""Generate a unified LaTeX table with results for all topics.
 
-	fig, axes = plt.subplots(2, 2, figsize=(14, 11))
-	datasets_list = list(DATASETS.keys())
+	Args:
+		all_topics_no_length: {topic_key: results_dict} without length control.
+		all_topics_with_length: {topic_key: results_dict} with length control.
 
-	# (1,1) Model comparison: M0, M1a, M1b, M1c, M2 test R² across datasets
-	ax = axes[0, 0]
-	models = ["M0", "M1a", "M1b", "M1c", "M2"] if INCLUDE_LENGTH_CONTROL else ["M1a", "M1b", "M1c", "M2"]
-	x = np.arange(len(DATASETS))
-	width = 0.15 if INCLUDE_LENGTH_CONTROL else 0.2
+	Returns the LaTeX code as a string and saves to file.
+	"""
+	lines = []
+	lines.append(r"\begin{table*}[htbp]")
+	lines.append(r"\centering")
+	lines.append(r"\small")
+	lines.append(r"\begin{tabular}{llcccc}")
+	lines.append(r"\toprule")
+	lines.append(
+		r"Topic & Synthesis & M1a R$^2$ & M1b R$^2$ & M1c R$^2$ & M2 R$^2$ \\"
+	)
+	lines.append(r"\midrule")
 
-	for i, model in enumerate(models):
-		scores = [all_results[ds]["test"][model]["point"] for ds in DATASETS]
-		colors = [DATASET_PALETTES[ds][model] for ds in datasets_list]
+	datasets_order = ["strict", "faithful", "restructured"]
 
-		if show_ci:
-			# Calculate asymmetric error bars
-			lower_errs = [all_results[ds]["test"][model]["point"] - all_results[ds]["test"][model]["ci_lower"] for ds in DATASETS]
-			upper_errs = [all_results[ds]["test"][model]["ci_upper"] - all_results[ds]["test"][model]["point"] for ds in DATASETS]
-			# Plot each bar individually with its color and error bar
-			for j, ds in enumerate(datasets_list):
-				ax.bar(x[j] + i * width, scores[j], width, color=colors[j], edgecolor="white", linewidth=0.5,
-					   yerr=[[lower_errs[j]], [upper_errs[j]]], capsize=2, error_kw={"ecolor": "black", "elinewidth": 0.8})
-		else:
-			# Plot without error bars
-			for j, ds in enumerate(datasets_list):
-				ax.bar(x[j] + i * width, scores[j], width, color=colors[j], edgecolor="white", linewidth=0.5)
+	for topic_idx, (topic_key, results) in enumerate(all_topics_no_length.items()):
+		display_name = TOPIC_DISPLAY_NAMES.get(topic_key, topic_key)
 
-	ax.set_xlabel("Dataset")
-	ax.set_ylabel("Test R²")
-	ci_label = " (95% CI)" if show_ci else ""
-	ax.set_title(f"Model Comparison (Test Set{ci_label})", fontweight="bold")
-	ax.set_xticks(x + (len(models) - 1) * width / 2)
-	ax.set_xticklabels([DATASETS[ds]["label"] for ds in DATASETS])
-	apply_clean_style(ax)
+		for ds_idx, ds in enumerate(datasets_order):
+			r = results[ds]
+			# Show topic name only on first row of each topic group
+			topic_col = display_name if ds_idx == 0 else ""
 
-	# Custom legend showing models (using gray shades) - placed below the plot
-	if INCLUDE_LENGTH_CONTROL:
-		model_legend = [
-			Patch(facecolor="#999999", edgecolor="black", label="M0"),
-			Patch(facecolor="#777777", edgecolor="black", label="M1a"),
-			Patch(facecolor="#555555", edgecolor="black", label="M1b"),
-			Patch(facecolor="#333333", edgecolor="black", label="M1c"),
-			Patch(facecolor="#111111", edgecolor="black", label="M2"),
-		]
-		ncol = 5
-	else:
-		model_legend = [
-			Patch(facecolor="#777777", edgecolor="black", label="M1a"),
-			Patch(facecolor="#555555", edgecolor="black", label="M1b"),
-			Patch(facecolor="#333333", edgecolor="black", label="M1c"),
-			Patch(facecolor="#111111", edgecolor="black", label="M2"),
-		]
-		ncol = 4
-	ax.legend(handles=model_legend, title="Model (light→dark)", loc="upper center",
-			  bbox_to_anchor=(0.5, -0.12), ncol=ncol, frameon=True)
+			cols = [
+				topic_col,
+				r["label"],
+				_fmt_r2(r["test"]["M1a"]),
+				_fmt_r2(r["test"]["M1b"]),
+				_fmt_r2(r["test"]["M1c"]),
+				r"\textbf{" + _fmt_r2(r["test"]["M2"]) + "}",
+			]
+			lines.append(" & ".join(cols) + " \\\\")
 
-	# (1,2) Feature count vs Test R² scatter
-	ax = axes[0, 1]
-	for ds in datasets_list:
-		result = all_results[ds]
-		base_color = DATASET_PALETTES[ds]["base"]
+		# Add midrule between topics (but not after the last one)
+		if topic_idx < len(all_topics_no_length) - 1:
+			lines.append(r"\midrule")
 
-		if show_ci:
-			# M1c point with error bar
-			m1c_err = [[result["test"]["M1c"]["point"] - result["test"]["M1c"]["ci_lower"]],
-					   [result["test"]["M1c"]["ci_upper"] - result["test"]["M1c"]["point"]]]
-			ax.errorbar(result["n_features"]["M1c"], result["test"]["M1c"]["point"],
-						yerr=m1c_err, fmt="o", markersize=8, color=base_color, alpha=0.6, capsize=3)
-			# M2 point with error bar
-			m2_err = [[result["test"]["M2"]["point"] - result["test"]["M2"]["ci_lower"]],
-					  [result["test"]["M2"]["ci_upper"] - result["test"]["M2"]["point"]]]
-			ax.errorbar(result["n_features"]["M2_selected"], result["test"]["M2"]["point"],
-						yerr=m2_err, fmt="^", markersize=10, color=base_color, label=result["label"], capsize=3)
-		else:
-			# Without error bars
-			ax.scatter(result["n_features"]["M1c"], result["test"]["M1c"]["point"],
-					   marker="o", s=100, color=base_color, alpha=0.6)
-			ax.scatter(result["n_features"]["M2_selected"], result["test"]["M2"]["point"],
-					   marker="^", s=150, color=base_color, label=result["label"])
+	lines.append(r"\bottomrule")
+	lines.append(r"\end{tabular}")
+	lines.append(
+		r"\caption{Model comparison across synthesis types and debate topics. "
+		r"R$^2$ values on held-out test set (40\%) with 95\% bootstrap CI ($\pm$ half-width). "
+		r"M1a uses structure presence features, M1b content presence features, "
+		r"and M1c both structure and content presence features. "
+		r"M2 LASSO models select from sequential structure and content features "
+		r"as detailed in Section~\ref{sec:experiments-argument-generation}.}"
+	)
+	lines.append(r"\label{tab:argument_generation_results}")
+	lines.append(r"\end{table*}")
 
-		# Connect them
-		ax.plot([result["n_features"]["M1c"], result["n_features"]["M2_selected"]],
-				[result["test"]["M1c"]["point"], result["test"]["M2"]["point"]],
-				"--", color=base_color, alpha=0.5)
+	latex_code = "\n".join(lines)
 
-	ax.set_xlabel("Number of Features")
-	ax.set_ylabel("Test R²")
-	ax.set_title(f"Features vs Performance\n(o=M1c, ^=M2{ci_label})", fontweight="bold")
-	ax.legend()
-	apply_clean_style(ax)
+	# Save to paper/tables/ (new preprint location)
+	out_path = SCRIPT_DIR / ".." / ".." / "paper" / "tables" / "argument_generation_results.tex"
+	out_path.parent.mkdir(parents=True, exist_ok=True)
+	out_path.write_text(latex_code)
+	logger.info(f"Saved unified LaTeX table: {out_path.resolve()}")
 
-	# (2,1) Improvement (M2 - M1c) per dataset
-	ax = axes[1, 0]
-	x = np.arange(len(DATASETS))
-	deltas = [all_results[ds]["test"]["M2"]["point"] - all_results[ds]["test"]["M1c"]["point"] for ds in DATASETS]
-	colors = [DATASET_PALETTES[ds]["base"] for ds in datasets_list]
+	# Also save to paper/latex/tables/ (legacy location)
+	out_path_legacy = SCRIPT_DIR / ".." / ".." / "paper" / "latex" / "tables" / "argument_generation_results.tex"
+	out_path_legacy.parent.mkdir(parents=True, exist_ok=True)
+	out_path_legacy.write_text(latex_code)
+	logger.info(f"Saved unified LaTeX table (legacy): {out_path_legacy.resolve()}")
 
-	if show_ci:
-		# Propagate uncertainty: std_delta ≈ sqrt(std_m2² + std_m1c²)
-		delta_stds = [
-			np.sqrt(all_results[ds]["test"]["M2"]["std"]**2 + all_results[ds]["test"]["M1c"]["std"]**2)
-			for ds in DATASETS
-		]
-		delta_errs = [1.96 * std for std in delta_stds]
-		ax.bar(x, deltas, color=colors, edgecolor="white", linewidth=0.5,
-			   yerr=delta_errs, capsize=4, error_kw={"ecolor": "black", "elinewidth": 1})
-	else:
-		delta_errs = [0] * len(deltas)
-		ax.bar(x, deltas, color=colors, edgecolor="white", linewidth=0.5)
+	logger.info("\n" + "=" * 70)
+	logger.info("Unified LaTeX Table Code")
+	logger.info("=" * 70)
+	logger.info(latex_code)
 
-	ax.axhline(y=0, color="black", linestyle="-", linewidth=0.5)
-	ax.set_xlabel("Dataset")
-	ax.set_ylabel("ΔR² (M2 - M1c)")
-	ax.set_title(f"Sequential Improvement Over Topic Baseline{ci_label}", fontweight="bold")
-	ax.set_xticks(x)
-	ax.set_xticklabels([DATASETS[ds]["label"] for ds in DATASETS])
-	apply_clean_style(ax)
+	# Also generate the length-controlled version
+	lines_len = []
+	lines_len.append(r"\begin{table*}[htbp]")
+	lines_len.append(r"\centering")
+	lines_len.append(r"\small")
+	lines_len.append(r"\begin{tabular}{llccccc}")
+	lines_len.append(r"\toprule")
+	lines_len.append(
+		r"Topic & Synthesis & M0 R$^2$ & M1a R$^2$ & M1b R$^2$ & M1c R$^2$ & M2 R$^2$ \\"
+	)
+	lines_len.append(r"\midrule")
 
-	for i, (delta, err) in enumerate(zip(deltas, delta_errs)):
-		y_offset = delta + err if delta > 0 else delta - err
-		if not show_ci:
-			y_offset = delta
-		ax.annotate(f"{delta:+.4f}", xy=(i, y_offset), ha="center",
-					va="bottom" if delta > 0 else "top", fontsize=10, fontweight="bold")
+	for topic_idx, (topic_key, results) in enumerate(all_topics_with_length.items()):
+		display_name = TOPIC_DISPLAY_NAMES.get(topic_key, topic_key)
 
-	# (2,2) Summary table
-	ax = axes[1, 1]
-	ax.axis("off")
+		for ds_idx, ds in enumerate(datasets_order):
+			r = results[ds]
+			topic_col = display_name if ds_idx == 0 else ""
 
-	table_data = []
-	for ds in DATASETS:
-		result = all_results[ds]
-		m1c_pt = result["test"]["M1c"]["point"]
-		m2_pt = result["test"]["M2"]["point"]
-		delta = m2_pt - m1c_pt
-		pct = (delta / m1c_pt * 100) if m1c_pt > 0 else 0
+			cols = [
+				topic_col,
+				r["label"],
+				_fmt_r2(r["test"]["M0"]),
+				_fmt_r2(r["test"]["M1a"]),
+				_fmt_r2(r["test"]["M1b"]),
+				_fmt_r2(r["test"]["M1c"]),
+				r"\textbf{" + _fmt_r2(r["test"]["M2"]) + "}",
+			]
+			lines_len.append(" & ".join(cols) + " \\\\")
 
-		if show_ci:
-			# Format with point estimate and CI on separate lines
-			m1c_str = f"{m1c_pt:.2f}\n[{result['test']['M1c']['ci_lower']:.2f}, {result['test']['M1c']['ci_upper']:.2f}]"
-			m2_str = f"{m2_pt:.2f}\n[{result['test']['M2']['ci_lower']:.2f}, {result['test']['M2']['ci_upper']:.2f}]"
-		else:
-			m1c_str = f"{m1c_pt:.4f}"
-			m2_str = f"{m2_pt:.4f}"
+		if topic_idx < len(all_topics_with_length) - 1:
+			lines_len.append(r"\midrule")
 
-		table_data.append([
-			result["label"],
-			f"{result['n_train']}",
-			f"{result['n_test']}",
-			m1c_str,
-			m2_str,
-			f"{delta:+.3f}",
-			f"{pct:+.1f}%",
-		])
+	lines_len.append(r"\bottomrule")
+	lines_len.append(r"\end{tabular}")
+	lines_len.append(
+		r"\caption{Model comparison with argument length control across topics. "
+		r"R$^2$ values on held-out test set (40\%) with 95\% bootstrap CI ($\pm$ half-width). "
+		r"M0 uses only argument length (characters). All other models additionally include length.}"
+	)
+	lines_len.append(r"\label{tab:argument_generation_results_length}")
+	lines_len.append(r"\end{table*}")
 
-	if show_ci:
-		col_labels = ["Dataset", "N Train", "N Test", "M1c R²\n[95% CI]", "M2 R²\n[95% CI]", "Δ", "% Gain"]
-		table_scale = (1.4, 2.0)
-		title_y = 0.92
-		title = f"Summary Statistics\n(95% CI via {N_BOOTSTRAP} bootstrap iterations)"
-	else:
-		col_labels = ["Dataset", "N Train", "N Test", "M1c R²", "M2 R²", "Δ", "% Gain"]
-		table_scale = (1.3, 1.5)
-		title_y = 0.85
-		title = "Summary Statistics"
+	latex_len_code = "\n".join(lines_len)
 
-	table = ax.table(cellText=table_data, colLabels=col_labels, loc="center", cellLoc="center")
-	table.auto_set_font_size(False)
-	table.set_fontsize(9)
-	table.scale(*table_scale)
-	ax.set_title(title, fontweight="bold", y=title_y)
+	out_path_len = SCRIPT_DIR / ".." / ".." / "paper" / "tables" / "argument_generation_results_length.tex"
+	out_path_len.write_text(latex_len_code)
+	logger.info(f"Saved length-controlled LaTeX table: {out_path_len.resolve()}")
 
-	plt.tight_layout()
-	ci_suffix = "_ci" if show_ci else "_no_ci"
-	filename = f"m1_vs_m2_summary_dashboard{ci_suffix}{FIGURE_SUFFIX}.pdf"
-	plt.savefig(FIGURES_DIR / filename, dpi=300, bbox_inches="tight")
-	plt.close()
-	logger.info(f"Saved: {filename}")
+	return latex_code
 
 
+# =============================================================================
 # =============================================================================
 # Section 8: Main Execution
 # =============================================================================
@@ -1545,7 +1805,7 @@ def export_coefficients_csv(all_results):
 				"category": categorize_feature(feat),
 			})
 		coef_df = pd.DataFrame(rows)
-		subdir = ARGUMENT_DATA_DIR / f"synthesis_{ds_name}"
+		subdir = ARGUMENT_DATA_DIR / TOPIC / f"synthesis_{ds_name}"
 		subdir.mkdir(parents=True, exist_ok=True)
 		out_path = subdir / f"m2_coefficients_{ds_name}.csv"
 		coef_df.to_csv(out_path, index=False)
@@ -1610,15 +1870,311 @@ def export_trajectory_predictions(all_results):
 		# Sort by predicted score descending
 		combo_df = combo_df.sort_values("predicted_score", ascending=False)
 
-		subdir = ARGUMENT_DATA_DIR / f"synthesis_{ds_name}"
+		subdir = ARGUMENT_DATA_DIR / TOPIC / f"synthesis_{ds_name}"
 		subdir.mkdir(parents=True, exist_ok=True)
 		out_path = subdir / f"m2_trajectory_rankings_{ds_name}.csv"
 		combo_df.to_csv(out_path, index=False)
 		logger.info(f"Saved: {out_path} ({len(combo_df)} rows)")
 
 
+def plot_unified_alpha_selection(cross_topic_results):
+	"""Unified alpha selection: 5 rows (topics) x 3 columns (synthesis)."""
+	topic_keys = list(TOPIC_SUBTOPICS_FILES.keys())
+	synthesis_modes = ["strict", "faithful", "restructured"]
+	synthesis_labels = {"strict": "Strict", "faithful": "Faithful", "restructured": "Restructured"}
+	n_topics = len(topic_keys)
+	n_synth = len(synthesis_modes)
+
+	fig, axes = plt.subplots(
+		n_topics, n_synth, figsize=(12, 2 * n_topics), sharex=True, sharey=True
+	)
+
+	for row, topic_key in enumerate(topic_keys):
+		display_name = TOPIC_DISPLAY_NAMES.get(topic_key, topic_key)
+		for col, synth in enumerate(synthesis_modes):
+			ax = axes[row, col]
+			topic_results = cross_topic_results.get(topic_key, {})
+			result = topic_results.get(synth)
+
+			if result is None:
+				ax.set_visible(False)
+				continue
+
+			alpha_df = result["alpha_results"]
+			base_color = DATASET_PALETTES[synth]["base"]
+
+			ax.errorbar(
+				alpha_df["alpha"],
+				alpha_df["mean"],
+				yerr=alpha_df["std"],
+				marker="o",
+				capsize=3,
+				color=base_color,
+				linewidth=1.5,
+				markersize=4,
+			)
+
+			best_idx = alpha_df["mean"].idxmax()
+			best = alpha_df.loc[best_idx]
+			ax.scatter(
+				[best["alpha"]],
+				[best["mean"]],
+				marker="*",
+				s=150,
+				color=base_color,
+				zorder=5,
+			)
+
+			ax.set_xscale("log")
+			ax.spines["top"].set_visible(False)
+			ax.spines["right"].set_visible(False)
+			ax.grid(True, alpha=0.3, zorder=0, axis="y")
+			ax.tick_params(axis="both", labelsize=9)
+
+			# Column titles on first row
+			if row == 0:
+				ax.set_title(synthesis_labels[synth], fontweight="bold", fontsize=12)
+
+			# Row labels on first column
+			if col == 0:
+				ax.set_ylabel(display_name, fontsize=10)
+
+			# X-axis label on last row
+			if row == n_topics - 1:
+				ax.set_xlabel("Alpha (log scale)", fontsize=9)
+
+	plt.tight_layout()
+	filename = "unified_m2_alpha_selection_rank.pdf"
+	unified_dir = SCRIPT_DIR / "figures" / "predictability"
+	unified_dir.mkdir(parents=True, exist_ok=True)
+	plt.savefig(unified_dir / filename, dpi=300, bbox_inches="tight")
+	plt.close()
+	logger.info(f"Saved: {filename}")
+	_copy_to_paper(unified_dir, filename)
+
+
+def plot_unified_feature_categories(cross_topic_results):
+	"""Unified feature categories: 5 rows (topics) x 3 columns (synthesis)."""
+	topic_keys = list(TOPIC_SUBTOPICS_FILES.keys())
+	synthesis_modes = ["strict", "faithful", "restructured"]
+	synthesis_labels = {"strict": "Strict", "faithful": "Faithful", "restructured": "Restructured"}
+	n_topics = len(topic_keys)
+	n_synth = len(synthesis_modes)
+
+	category_colors = {
+		"Structure Position": "#e74c3c",
+		"Content Position": "#3498db",
+		"Position Interactions": "#2ecc71",
+		"Structure Chains (len-2)": "#f39c12",
+		"Content Chains (len-2)": "#9b59b6",
+	}
+	categories = list(category_colors.keys())
+
+	fig, axes = plt.subplots(
+		n_topics, n_synth, figsize=(12, 2 * n_topics), sharex=True, sharey=True
+	)
+
+	for row, topic_key in enumerate(topic_keys):
+		display_name = TOPIC_DISPLAY_NAMES.get(topic_key, topic_key)
+		for col, synth in enumerate(synthesis_modes):
+			ax = axes[row, col]
+			topic_results = cross_topic_results.get(topic_key, {})
+			result = topic_results.get(synth)
+
+			if result is None:
+				ax.set_visible(False)
+				continue
+
+			feat_cats = result["feature_categories"]
+			bottom = 0
+			for cat in categories:
+				count = len(feat_cats.get(cat, []))
+				ax.bar(0, count, bottom=bottom, color=category_colors[cat], width=0.6)
+				if count > 0:
+					ax.text(
+						0, bottom + count / 2, str(count),
+						ha="center", va="center", fontsize=9, fontweight="bold",
+					)
+				bottom += count
+
+			ax.set_xticks([])
+			ax.spines["top"].set_visible(False)
+			ax.spines["right"].set_visible(False)
+			ax.grid(True, alpha=0.3, zorder=0, axis="y")
+			ax.tick_params(axis="both", labelsize=9)
+
+			# Column titles on first row
+			if row == 0:
+				ax.set_title(synthesis_labels[synth], fontweight="bold", fontsize=12)
+
+			# Row labels on first column
+			if col == 0:
+				ax.set_ylabel(display_name, fontsize=10)
+
+	# Shared legend at the bottom
+	from matplotlib.patches import Patch
+	legend_handles = [Patch(facecolor=category_colors[c], label=c) for c in categories]
+	fig.legend(
+		handles=legend_handles,
+		loc="lower center",
+		bbox_to_anchor=(0.5, -0.02),
+		ncol=len(categories),
+		fontsize=10,
+		frameon=False,
+	)
+
+	plt.tight_layout(rect=[0, 0.05, 1, 1])
+	filename = "unified_m2_feature_categories_rank.pdf"
+	unified_dir = SCRIPT_DIR / "figures" / "predictability"
+	unified_dir.mkdir(parents=True, exist_ok=True)
+	plt.savefig(unified_dir / filename, dpi=300, bbox_inches="tight")
+	plt.close()
+	logger.info(f"Saved: {filename}")
+	_copy_to_paper(unified_dir, filename)
+
+
+def _copy_to_paper(source_dir, filename):
+	"""Copy a figure from source_dir to the paper figures directory."""
+	paper_fig_dir = SCRIPT_DIR / ".." / ".." / "paper" / "figures" / "results" / "argument_generation"
+	paper_fig_dir.mkdir(parents=True, exist_ok=True)
+	src = source_dir / filename
+	if src.exists():
+		shutil.copy2(src, paper_fig_dir / filename)
+		logger.info(f"Copied {filename} to {paper_fig_dir}")
+
+
+def _run_all_topics():
+	"""Run analysis for all topics and generate unified cross-topic figure."""
+	global TOPIC, DATASETS, SUBTOPICS, FIGURES_DIR
+
+
+
+	cross_topic_results = {}
+
+	for topic_key, subtopics_file in TOPIC_SUBTOPICS_FILES.items():
+		logger.info("\n" + "#" * 70)
+		logger.info(f"TOPIC: {TOPIC_DISPLAY_NAMES.get(topic_key, topic_key)}")
+		logger.info("#" * 70)
+
+		# Set up globals for this topic
+		TOPIC = topic_key
+		with open(action_space_dir / subtopics_file) as f:
+			SUBTOPICS = list(json.load(f)["choices"].keys())
+		logger.info(f"Subtopics ({len(SUBTOPICS)}): {SUBTOPICS}")
+
+		FIGURES_DIR = SCRIPT_DIR / "figures" / "predictability" / TOPIC
+		FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+
+		DATASETS = {
+			"strict": {
+				"file": ARGUMENT_DATA_DIR / TOPIC / "synthesis_strict" / "pairwise_comparisons_bt_scores.csv",
+				"color": "#3498db",
+				"label": "Strict",
+			},
+			"faithful": {
+				"file": ARGUMENT_DATA_DIR / TOPIC / "synthesis_faithful" / "pairwise_comparisons_bt_scores.csv",
+				"color": "#2ecc71",
+				"label": "Faithful",
+			},
+			"restructured": {
+				"file": ARGUMENT_DATA_DIR / TOPIC / "synthesis_restructured" / "pairwise_comparisons_bt_scores.csv",
+				"color": "#e74c3c",
+				"label": "Restructured",
+			},
+		}
+
+		# Run with length control
+		all_results = {}
+		for name, config in DATASETS.items():
+			all_results[name] = analyze_dataset(name, config)
+
+		cross_topic_results[topic_key] = all_results
+
+		# Generate per-topic figures
+		plot_main_figure(all_results)
+
+		# Generate per-topic LaTeX table (pass same results for both args)
+		generate_latex_table(all_results, all_results, topic_key=topic_key)
+
+	# Generate unified cross-topic figures
+	plot_unified_cross_topic(cross_topic_results)
+	plot_strict_cross_topic(cross_topic_results)
+	plot_cross_topic_by_synthesis(cross_topic_results)
+
+	# Generate unified multi-topic LaTeX table (pass same results for both args)
+	generate_unified_latex_table(cross_topic_results, cross_topic_results)
+
+	# Generate unified 5x3 length histogram
+	plot_unified_length_histograms()
+
+	# Generate unified alpha selection and feature categories
+	plot_unified_alpha_selection(cross_topic_results)
+	plot_unified_feature_categories(cross_topic_results)
+
+	# Copy unified figures to paper directory
+	paper_fig_dir = SCRIPT_DIR / ".." / ".." / "paper" / "figures" / "results" / "argument_generation"
+	paper_fig_dir.mkdir(parents=True, exist_ok=True)
+	unified_fig_dir = SCRIPT_DIR / "figures" / "predictability"
+	for fig_name in [
+		"unified_cross_topic_test_r2_rank_arg_length.pdf",
+		"strict_cross_topic_test_r2_rank_arg_length.pdf",
+		"cross_topic_by_synthesis_test_r2_rank_arg_length.pdf",
+	]:
+		src = unified_fig_dir / fig_name
+		if src.exists():
+			shutil.copy2(src, paper_fig_dir / fig_name)
+			logger.info(f"Copied {fig_name} to {paper_fig_dir}")
+
+
 def main():
-	global INCLUDE_LENGTH_CONTROL, FIGURE_SUFFIX
+	global TOPIC, DATASETS, SUBTOPICS, FIGURES_DIR
+
+	parser = argparse.ArgumentParser(description="M1 vs M2 Summary Analysis")
+	parser.add_argument(
+		"--topic",
+		type=str,
+		default="single_use_plastic_specific_subtopics",
+		help="Topic subdirectory name, or 'all' to run all topics and generate unified figure.",
+	)
+	args = parser.parse_args()
+
+	if args.topic == "all":
+		_run_all_topics()
+		return
+
+	TOPIC = args.topic
+
+	# Load subtopics dynamically based on topic
+	subtopics_file = TOPIC_SUBTOPICS_FILES.get(TOPIC)
+	if subtopics_file is None:
+		raise ValueError(
+			f"Unknown topic: {TOPIC}. Must be one of: {list(TOPIC_SUBTOPICS_FILES.keys())}"
+		)
+	with open(action_space_dir / subtopics_file) as f:
+		SUBTOPICS = list(json.load(f)["choices"].keys())
+	logger.info(f"Subtopics ({len(SUBTOPICS)}): {SUBTOPICS}")
+
+	# Per-topic figures directory
+	FIGURES_DIR = SCRIPT_DIR / "figures" / "predictability" / TOPIC
+	FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+
+	DATASETS = {
+		"strict": {
+			"file": ARGUMENT_DATA_DIR / TOPIC / "synthesis_strict" / "pairwise_comparisons_bt_scores.csv",
+			"color": "#3498db",
+			"label": "Strict",
+		},
+		"faithful": {
+			"file": ARGUMENT_DATA_DIR / TOPIC / "synthesis_faithful" / "pairwise_comparisons_bt_scores.csv",
+			"color": "#2ecc71",
+			"label": "Faithful",
+		},
+		"restructured": {
+			"file": ARGUMENT_DATA_DIR / TOPIC / "synthesis_restructured" / "pairwise_comparisons_bt_scores.csv",
+			"color": "#e74c3c",
+			"label": "Restructured",
+		},
+	}
 
 	logger.info("=" * 70)
 	logger.info("M1 vs M2 Summary Analysis")
@@ -1629,58 +2185,29 @@ def main():
 	logger.info("\nM1 = Topic Model Baseline (presence features - what elements were used)")
 	logger.info("M2 = Sequential Model (position + interactions + chains - when and how)")
 
-	# --- Run analysis WITHOUT length control (for table section 1) ---
-	logger.info("\n" + "=" * 70)
-	logger.info("Running analysis WITHOUT length control")
-	logger.info("=" * 70)
-	INCLUDE_LENGTH_CONTROL = False
-	results_no_length = {}
-	for name, config in DATASETS.items():
-		results_no_length[name] = analyze_dataset(name, config)
-
-	# --- Run analysis WITH length control (for table section 2 + figures) ---
-	logger.info("\n" + "=" * 70)
-	logger.info("Running analysis WITH length control")
-	logger.info("=" * 70)
-	INCLUDE_LENGTH_CONTROL = True
-	FIGURE_SUFFIX = ("_rank" if RESPONSE_VARIABLE == "rank_score" else "") + "_arg_length"
 	all_results = {}
 	for name, config in DATASETS.items():
 		all_results[name] = analyze_dataset(name, config)
 
-	# Export CSVs (from length-controlled run)
+	# Export CSVs
 	logger.info("\n" + "=" * 70)
 	logger.info("Exporting CSVs")
 	logger.info("=" * 70)
 	export_coefficients_csv(all_results)
 	export_trajectory_predictions(all_results)
 
-	# Generate visualizations (from length-controlled run)
+	# Generate visualizations
 	logger.info("\n" + "=" * 70)
 	logger.info("Generating Visualizations")
 	logger.info("=" * 70)
 
 	plot_length_histograms()  # Argument length distributions
-
-	# Performance plots WITHOUT length control
-	INCLUDE_LENGTH_CONTROL = False
-	FIGURE_SUFFIX = "_rank" if RESPONSE_VARIABLE == "rank_score" else ""
-	plot_main_figure(results_no_length)
-	plot_top_features(results_no_length)
-
-	# Performance plots WITH length control
-	INCLUDE_LENGTH_CONTROL = True
-	FIGURE_SUFFIX = ("_rank" if RESPONSE_VARIABLE == "rank_score" else "") + "_arg_length"
 	plot_main_figure(all_results)
 	plot_top_features(all_results)
-
-	# Combined plots (already handle both conditions)
-	plot_feature_categories(results_no_length, all_results)
-	plot_alpha_selection(results_no_length, all_results)
-	plot_summary_dashboard(all_results, show_ci=True)
-
-	# Generate LaTeX table (both sections)
-	generate_latex_table(results_no_length, all_results)
+	plot_feature_categories(all_results)
+	plot_alpha_selection(all_results)
+	# Generate LaTeX table (pass same results for both args)
+	generate_latex_table(all_results, all_results)
 
 	# Print summary
 	logger.info("\n" + "=" * 70)

@@ -1,0 +1,46 @@
+{
+	"name": "Causal Subtopics",
+	"definition": "Forces the next reasoning step to analyze the issue through a specific argumentative lens or topical framework, controlling which perspective or moral framework is applied. Interventions along this dimension ensure the next step examines the issue from a particular angle (e.g., economic impact, human rights, justice and fairness, or risk assessment).",
+	"choices": {
+		"greenhouse_gas_emissions": {
+			"definition": "Examines livestock's contribution to methane and CO2 emissions and how taxation can drive reduction",
+			"internal_reasoning": "I should consider how animal agriculture accounts for approximately 14.5% of global greenhouse gas emissions, with cattle producing significant methane, making meat taxation a climate mitigation tool."
+		},
+		"land_and_water_resource_use": {
+			"definition": "Analyzes the disproportionate land, water, and feed resources consumed by meat production",
+			"internal_reasoning": "I should examine how livestock production uses 77% of agricultural land while providing only 18% of calories, and requires vastly more water per calorie than plant-based alternatives."
+		},
+		"public_health_outcomes": {
+			"definition": "Evaluates links between high meat consumption and chronic diseases including heart disease and cancer",
+			"internal_reasoning": "I should analyze how excessive red and processed meat consumption is linked to colorectal cancer, cardiovascular disease, and diabetes, creating preventable health burdens."
+		},
+		"animal_welfare_ethics": {
+			"definition": "Examines the moral case for reducing industrial animal farming through economic disincentives",
+			"internal_reasoning": "I should consider how factory farming subjects billions of sentient animals to confinement, suffering, and premature death, and how price signals can reduce demand for these practices."
+		},
+		"healthcare_cost_externalities": {
+			"definition": "Quantifies the public healthcare burden of diet-related diseases not reflected in meat prices",
+			"internal_reasoning": "I should calculate how diet-related chronic diseases cost healthcare systems hundreds of billions annually, representing externalities that current meat prices fail to incorporate."
+		},
+		"effectiveness_of_pigouvian_taxes": {
+			"definition": "Draws on evidence from tobacco, sugar, and carbon taxes to assess behavioral taxation efficacy",
+			"internal_reasoning": "I should evaluate how sin taxes on tobacco reduced smoking rates by 30-50%, sugar taxes decreased consumption in Mexico and the UK, demonstrating that price signals effectively shift behavior."
+		},
+		"food_equity_and_access": {
+			"definition": "Analyzes how a meat tax could disproportionately affect low-income households and mitigation strategies",
+			"internal_reasoning": "I should consider that while a regressive tax concern is valid, revenue can be redistributed through subsidies for plant-based foods and direct transfers to low-income families."
+		},
+		"alternative_protein_innovation": {
+			"definition": "Evaluates how price signals can accelerate the development and adoption of plant-based and cultured meat",
+			"internal_reasoning": "I should examine how making conventional meat more expensive creates market incentives for investment in plant-based proteins, cellular agriculture, and precision fermentation."
+		},
+		"international_policy_precedents": {
+			"definition": "Draws lessons from countries and jurisdictions that have proposed or implemented meat taxation",
+			"internal_reasoning": "I should analyze proposals and implementations in Denmark, Germany, the Netherlands, and New Zealand, examining political feasibility, design choices, and projected impacts."
+		},
+		"agricultural_subsidy_reform": {
+			"definition": "Examines how current subsidies artificially lower meat prices and how taxation can correct market distortions",
+			"internal_reasoning": "I should consider how governments spend billions subsidizing animal feed, grazing land, and livestock operations, creating artificially cheap meat that masks its true environmental and health costs."
+		}
+	}
+}

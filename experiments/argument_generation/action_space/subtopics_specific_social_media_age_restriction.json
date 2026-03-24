@@ -1,0 +1,46 @@
+{
+	"name": "Causal Subtopics",
+	"definition": "Forces the next reasoning step to analyze the issue through a specific argumentative lens or topical framework, controlling which perspective or moral framework is applied. Interventions along this dimension ensure the next step examines the issue from a particular angle (e.g., economic impact, human rights, justice and fairness, or risk assessment).",
+	"choices": {
+		"adolescent_brain_development": {
+			"definition": "Examines how prefrontal cortex immaturity makes under-16s vulnerable to addictive design and impulsive online behavior",
+			"internal_reasoning": "I should consider how the prefrontal cortex, responsible for impulse control and risk assessment, does not fully mature until the mid-20s, making adolescents particularly susceptible to dopamine-driven engagement loops and poor decision-making online."
+		},
+		"mental_health_impact": {
+			"definition": "Analyzes the relationship between social media use and anxiety, depression, and body image issues in young people",
+			"internal_reasoning": "I should examine how longitudinal studies link heavy social media use in under-16s to increased rates of anxiety, depression, loneliness, and body dissatisfaction driven by social comparison and curated self-presentation."
+		},
+		"online_predation_and_safety": {
+			"definition": "Evaluates the risks of grooming, exploitation, and data privacy violations targeting minors on social platforms",
+			"internal_reasoning": "I should analyze how social media platforms expose minors to predatory adults through direct messaging, how children's data is harvested for targeted advertising, and how age restrictions reduce the attack surface for exploitation."
+		},
+		"cyberbullying_and_harassment": {
+			"definition": "Examines the prevalence and psychological harm of online bullying among younger users and its spillover into schools",
+			"internal_reasoning": "I should consider how cyberbullying disproportionately affects younger adolescents, extends school-based conflicts into 24/7 online environments, and correlates with self-harm and suicidal ideation in vulnerable youth."
+		},
+		"attention_and_academic_performance": {
+			"definition": "Analyzes the effects of social media use on concentration, learning outcomes, and sleep quality in young people",
+			"internal_reasoning": "I should examine how constant notifications and context-switching fragment attention spans, how screen time before bed disrupts sleep architecture critical for learning, and how academic performance declines correlate with social media usage hours."
+		},
+		"addictive_design_exploitation": {
+			"definition": "Evaluates how platform features like infinite scroll, notifications, and variable rewards deliberately exploit developing minds",
+			"internal_reasoning": "I should analyze how social media platforms employ behavioral psychology techniques, including variable ratio reinforcement schedules and social validation feedback loops, that are specifically designed to maximize engagement and are disproportionately effective on developing brains."
+		},
+		"corporate_accountability_failure": {
+			"definition": "Examines platforms' consistent failure to self-regulate and their prioritization of profit over child safety",
+			"internal_reasoning": "I should consider how internal documents from major platforms reveal awareness of harm to young users alongside decisions to prioritize engagement metrics, demonstrating that voluntary self-regulation has consistently failed to protect children."
+		},
+		"age_verification_feasibility": {
+			"definition": "Evaluates the technical viability and proportionate privacy tradeoffs of implementing effective age restrictions",
+			"internal_reasoning": "I should examine how existing age verification technologies, including document verification and age estimation, can achieve high accuracy while maintaining proportionate privacy protections, as demonstrated by successful implementations in Australia and the EU."
+		},
+		"social_development_and_identity": {
+			"definition": "Analyzes how premature social media exposure distorts self-concept and undermines healthy offline socialization",
+			"internal_reasoning": "I should consider how early exposure to curated online personas, adult content, and performative social dynamics interferes with the natural development of identity, empathy, and face-to-face social skills during critical developmental periods."
+		},
+		"international_regulatory_precedents": {
+			"definition": "Draws lessons from countries that have implemented or proposed social media age restrictions and their outcomes",
+			"internal_reasoning": "I should analyze how Australia's social media ban for under-16s, the EU Digital Services Act's enhanced protections for minors, and China's youth usage time limits provide evidence on implementation feasibility, enforcement mechanisms, and positive outcomes."
+		}
+	}
+}

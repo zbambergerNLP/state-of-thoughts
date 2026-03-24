@@ -290,3 +290,22 @@ for action_name, action_spec in dimension['actions'].items():
     if 'internal_reasoning' in action_spec:
         print(f"  Internal Reasoning: {action_spec['internal_reasoning']}")
 ```
+
+## Contributing
+
+When adding new action spaces:
+
+1. Follow the schema and formatting guidelines above
+2. Create both standard and expanded versions if appropriate
+3. Update this README with information about the new dimension
+4. Test that the JSON is valid and loads correctly
+5. Provide examples of how the actions differ from existing dimensions
+
+## Questions?
+
+For questions about:
+- **Schema design**: See the "File Structure" section above
+- **Dimension design**: See the "Creating New Action Space JSONs" section
+- **Existing dimensions**: See the "Current Dimensions" section
+- **Implementation**: See the main project README or controller documentation
+
