@@ -87,8 +87,14 @@ ACTION_SPACE_DIR = SCRIPT_DIR / "action_space"
 with open(ACTION_SPACE_DIR / "structures.json") as f:
 	STRUCTURES = list(json.load(f)["choices"].keys())
 
-with open(ACTION_SPACE_DIR / "subtopics.json") as f:
-	SUBTOPICS = list(json.load(f)["choices"].keys())
+TOPIC_SUBTOPICS_FILES = {
+	"single_use_plastic_specific_subtopics": "subtopics_specific_single_use_plastic.json",
+	"standardized_testing": "subtopics_specific_standardized_testing.json",
+	"meat_tax": "subtopics_specific_meat_tax.json",
+	"social_media_age_restriction": "subtopics_specific_social_media_age_restriction.json",
+	"universal_basic_income": "subtopics_specific_universal_basic_income.json",
+}
+SUBTOPICS: list[str] = []
 
 
 # =============================================================================
@@ -96,19 +102,20 @@ with open(ACTION_SPACE_DIR / "subtopics.json") as f:
 # =============================================================================
 
 
-def load_rankings(synthesis_type: str) -> pd.DataFrame:
+def load_rankings(synthesis_type: str, topic: str) -> pd.DataFrame:
 	"""Load M2 trajectory rankings for a synthesis type.
 
 	Tries feather format first, falls back to CSV for backwards compatibility.
 
 	Args:
 		synthesis_type: One of strict, faithful, restructured.
+		topic: Topic subdirectory name (e.g. single_use_plastic).
 
 	Returns:
 		DataFrame with trajectory rankings.
 	"""
 	base_path = Path(
-		f"experiments/argument_generation/argument_data/synthesis_{synthesis_type}"
+		f"experiments/argument_generation/argument_data/{topic}/synthesis_{synthesis_type}"
 		f"/m2_trajectory_rankings_{synthesis_type}"
 	)
 	feather_path = base_path.with_suffix(".feather")
@@ -234,12 +241,13 @@ def filter_combos(
 	return filtered
 
 
-def select_targeted(synthesis_type: str, top_n: int) -> pd.DataFrame:
+def select_targeted(synthesis_type: str, top_n: int, topic: str) -> pd.DataFrame:
 	"""Select top-N trajectories from M2 rankings.
 
 	Args:
 		synthesis_type: One of strict, faithful, restructured.
 		top_n: Number of trajectories to select.
+		topic: Topic subdirectory name (e.g. single_use_plastic).
 
 	Returns:
 		DataFrame with selected trajectories and predicted_score.
@@ -248,7 +256,7 @@ def select_targeted(synthesis_type: str, top_n: int) -> pd.DataFrame:
 	logger.info("Targeted (M2) selection for %s", synthesis_type)
 	logger.info("=" * 60)
 
-	rankings = load_rankings(synthesis_type)
+	rankings = load_rankings(synthesis_type, topic)
 	selected = rankings.head(top_n).copy()
 
 	logger.info("Selected top %d M2-predicted trajectories", len(selected))
@@ -259,6 +267,7 @@ def select_random(
 	synthesis_type: str,
 	top_n: int,
 	seed: int,
+	topic: str,
 ) -> pd.DataFrame:
 	"""Select random trajectories for ablation.
 
@@ -269,6 +278,7 @@ def select_random(
 		synthesis_type: One of strict, faithful, restructured.
 		top_n: Number of trajectories to select.
 		seed: Random seed.
+		topic: Topic subdirectory name (e.g. single_use_plastic).
 
 	Returns:
 		DataFrame with selected trajectories.
@@ -277,7 +287,7 @@ def select_random(
 	logger.info("Random selection for %s", synthesis_type)
 	logger.info("=" * 60)
 
-	rankings = load_rankings(synthesis_type)
+	rankings = load_rankings(synthesis_type, topic)
 	# Pass 0 for exclude_m2_top_n to only exclude observed trajectories
 	exclusion_set = build_exclusion_set(rankings, exclude_m2_top_n=0)
 
@@ -300,6 +310,7 @@ def select_m1b(
 	synthesis_type: str,
 	top_n: int,
 	seed: int,
+	topic: str,
 ) -> pd.DataFrame:
 	"""Select top-3-topics trajectories for ablation.
 
@@ -314,6 +325,7 @@ def select_m1b(
 		synthesis_type: One of strict, faithful, restructured.
 		top_n: Number of trajectories to select.
 		seed: Random seed for sampling.
+		topic: Topic subdirectory name (e.g. single_use_plastic).
 
 	Returns:
 		DataFrame with selected trajectories.
@@ -324,7 +336,7 @@ def select_m1b(
 
 	# Step 1: Load original argument data and fit M1b to find top topics
 	bt_path = Path(
-		f"experiments/argument_generation/argument_data/synthesis_{synthesis_type}"
+		f"experiments/argument_generation/argument_data/{topic}/synthesis_{synthesis_type}"
 		f"/pairwise_comparisons_bt_scores.csv"
 	)
 	arg_df = pd.read_csv(bt_path)
@@ -425,7 +437,7 @@ def select_m1b(
 	)
 
 	# Step 4: Remove observed trajectories only (no M2 top-50 exclusion)
-	rankings = load_rankings(synthesis_type)
+	rankings = load_rankings(synthesis_type, topic)
 	exclusion_set = build_exclusion_set(rankings, exclude_m2_top_n=0)
 	filtered = filter_combos(filtered_by_topics, exclusion_set)
 
@@ -994,13 +1006,32 @@ def parse_args() -> argparse.Namespace:
 		default=False,
 		help="Only select trajectories, don't generate arguments.",
 	)
+	parser.add_argument(
+		"--topic",
+		type=str,
+		default="single_use_plastic_specific_subtopics",
+		help="Topic subdirectory name (default: single_use_plastic_specific_subtopics).",
+	)
 
 	return parser.parse_args()
 
 
 def main() -> None:
 	"""Main entry point."""
+	global SUBTOPICS
+
 	args = parse_args()
+
+	# Load subtopics dynamically based on topic
+	subtopics_file = TOPIC_SUBTOPICS_FILES.get(args.topic)
+	if subtopics_file is None:
+		raise ValueError(
+			f"Unknown topic: {args.topic}. "
+			f"Must be one of: {list(TOPIC_SUBTOPICS_FILES.keys())}"
+		)
+	with open(ACTION_SPACE_DIR / subtopics_file) as f:
+		SUBTOPICS = list(json.load(f)["choices"].keys())
+	logger.info("Loaded %d subtopics for topic '%s'", len(SUBTOPICS), args.topic)
 
 	# Determine synthesis types to process
 	if args.synthesis_type == "all":
@@ -1026,11 +1057,11 @@ def main() -> None:
 
 			# Step 1: Select trajectories
 			if selection_mode == "targeted":
-				trajectories = select_targeted(synthesis_type, args.top_n)
+				trajectories = select_targeted(synthesis_type, args.top_n, args.topic)
 			elif selection_mode == "random":
-				trajectories = select_random(synthesis_type, args.top_n, args.seed)
+				trajectories = select_random(synthesis_type, args.top_n, args.seed, args.topic)
 			else:  # m1b
-				trajectories = select_m1b(synthesis_type, args.top_n, args.seed)
+				trajectories = select_m1b(synthesis_type, args.top_n, args.seed, args.topic)
 
 			# Step 2: Generate arguments (unless selection_only)
 			if args.selection_only:
@@ -1041,7 +1072,7 @@ def main() -> None:
 				)
 				# Optionally save the selected trajectories
 				out_dir = Path(
-					f"experiments/argument_generation/argument_data/synthesis_{synthesis_type}"
+					f"experiments/argument_generation/argument_data/{args.topic}/synthesis_{synthesis_type}"
 				)
 				out_dir.mkdir(parents=True, exist_ok=True)
 				out_path = out_dir / f"{selection_mode}_selected_trajectories_{synthesis_type}.csv"
@@ -1049,8 +1080,8 @@ def main() -> None:
 				logger.info("Saved selected trajectories to %s", out_path)
 			else:
 				output_path = Path(
-					f"experiments/argument_generation/argument_data/synthesis_{synthesis_type}"
-					f"/{selection_mode}_forced_results_{synthesis_type}.csv"
+					f"experiments/argument_generation/argument_data/{args.topic}/synthesis_{synthesis_type}"
+					f"/targeted_generation/{selection_mode}_forced_results_{synthesis_type}.csv"
 				)
 				run_generation(
 					trajectories,

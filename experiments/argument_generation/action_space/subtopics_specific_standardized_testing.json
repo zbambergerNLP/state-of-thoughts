@@ -1,0 +1,46 @@
+{
+	"name": "Causal Subtopics",
+	"definition": "Forces the next reasoning step to analyze the issue through a specific argumentative lens or topical framework, controlling which perspective or moral framework is applied. Interventions along this dimension ensure the next step examines the issue from a particular angle (e.g., economic impact, human rights, justice and fairness, or risk assessment).",
+	"choices": {
+		"measurement_validity": {
+			"definition": "Examines whether standardized tests actually measure the knowledge and skills they claim to assess",
+			"internal_reasoning": "I should consider how standardized tests often measure test-taking ability rather than deep understanding, failing to capture critical thinking, creativity, and practical knowledge."
+		},
+		"equity_and_access_gaps": {
+			"definition": "Analyzes how testing disparities reflect and reinforce socioeconomic, racial, and linguistic inequalities",
+			"internal_reasoning": "I should examine how score gaps correlate with family income, access to test prep, and neighborhood resources rather than innate ability, perpetuating systemic inequality."
+		},
+		"curriculum_narrowing": {
+			"definition": "Evaluates how test-centric accountability causes schools to abandon rich curriculum for test prep",
+			"internal_reasoning": "I should consider how high-stakes testing incentivizes schools to cut arts, science labs, and social studies in favor of drilling tested subjects, impoverishing the educational experience."
+		},
+		"student_mental_health": {
+			"definition": "Addresses the psychological toll of high-stakes testing on student wellbeing and motivation",
+			"internal_reasoning": "I should analyze how test anxiety, performance pressure, and fear of failure harm student mental health and can undermine intrinsic motivation to learn."
+		},
+		"teacher_professional_impact": {
+			"definition": "Examines how test-based evaluation constrains teacher autonomy and degrades the profession",
+			"internal_reasoning": "I should consider how tying teacher evaluations to test scores forces teaching to the test, drives talented educators from the profession, and reduces pedagogical innovation."
+		},
+		"alternative_assessment_methods": {
+			"definition": "Assesses portfolio, project-based, and formative assessment approaches as viable replacements",
+			"internal_reasoning": "I should evaluate how alternative assessments like portfolios, capstone projects, and performance-based evaluations can provide richer, more authentic measures of student learning."
+		},
+		"cultural_and_linguistic_bias": {
+			"definition": "Analyzes how test construction embeds cultural assumptions that disadvantage certain populations",
+			"internal_reasoning": "I should examine how question framing, vocabulary choices, and cultural references in standardized tests systematically disadvantage English language learners and minority students."
+		},
+		"predictive_validity_failure": {
+			"definition": "Evaluates evidence that standardized test scores poorly predict real-world academic and career success",
+			"internal_reasoning": "I should consider research showing that SAT/ACT scores are weak predictors of college GPA, graduation rates, and career achievement compared to high school grades and non-cognitive factors."
+		},
+		"economic_costs_and_industry": {
+			"definition": "Examines the multi-billion dollar testing industry and whether resources could be better allocated",
+			"internal_reasoning": "I should analyze how billions spent on test development, administration, and preparation could instead fund teachers, counselors, and direct educational improvements."
+		},
+		"international_comparison": {
+			"definition": "Draws lessons from countries that have reduced or eliminated standardized testing with positive outcomes",
+			"internal_reasoning": "I should examine how top-performing education systems like Finland have minimized standardized testing while achieving superior outcomes through trust in teachers and holistic assessment."
+		}
+	}
+}
