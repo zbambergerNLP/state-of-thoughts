@@ -1,3 +1,5 @@
+
+
 # **STATe-of-Thoughts: Structured Action Templates for Tree-of-Thoughts**
 
 <p align="center">
@@ -24,7 +26,7 @@ Built on [DSPy](https://github.com/stanfordnlp/dspy) and [vLLM](https://github.c
 ### **Prerequisites**
 
 - **Python 3.12+**
-- **GPUs:** Recommended setup is 2 GPUs (e.g., GPU 0 for Generation, GPU 1 for Reranking)
+- **GPUs:** Recommended setup is 2 GPUs (e.g., GPU 0 for Generation, GPU 1 for Reranking). The default reranker model requires at least 40GB of VRAM per GPU (e.g., A100 40GB or H100).
 
 ### **Clone the repository**
 
